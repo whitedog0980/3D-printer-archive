@@ -17,7 +17,8 @@ troubleshooting, print-quality, maintenance, parts 등 3D프린터 출력관련�
 ---
 
 ## ⚙️ Hardware & Firmware Setup
-> 해당 셋업은 따로 명시되어있지 아니한 경우 디폴트값 입니다.
+> 해당 셋업은 따로 명시되어있지 아니한 경우 디폴트값 입니다. 
+
 | 구분 | 사양 / 설정값 |
 | :--- | :--- |
 | **Printer Model** | Bambulab A1 |
