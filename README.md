@@ -7,7 +7,7 @@ troubleshooting, print-quality, maintenance, parts 등 3D프린터 출력관련�
 
 ---
 
-## 📌 Quick Links (바로가기)
+## 📌 Quick Links (바로가기) (아직 기능없음)
 
 * 🚨 [**Troubleshooting Logs**](./docs/troubleshooting/) — 출력 불량, 하드웨어 이슈 및 해결 내역
 * 🎯 [**Print Quality & Calibration**](./docs/quality/) — 슬라이서 프로필, 소재별 레시피, 튜닝 기록
@@ -17,14 +17,13 @@ troubleshooting, print-quality, maintenance, parts 등 3D프린터 출력관련�
 ---
 
 ## ⚙️ Hardware & Firmware Setup
-
+> 해당 셋업은 따로 명시되어있지 아니한 경우 디폴트값 입니다.
 | 구분 | 사양 / 설정값 |
 | :--- | :--- |
-| **Printer Model** |  |
-| **Firmware** | *예: Klipper / Marlin v2.1.x* |
-| **Slicer** | *예: OrcaSlicer / PrusaSlicer / Cura* |
-| **Main Nozzle** | *예: Brass 0.4mm (Hardened Steel 0.6mm)* |
-| **Default Bed Type** | *예: PEI Texture Sheet* |
+| **Printer Model** | Bambulab A1 |
+| **Slicer** | Bambu Studio |
+| **Main Nozzle** | Bambu default |
+| **Default Bed Type** | default PEI Texture Sheet |
 
 ---
 
@@ -32,8 +31,6 @@ troubleshooting, print-quality, maintenance, parts 등 3D프린터 출력관련�
 
 | 날짜 | 이슈 항목 | 원인 및 핵심 조치 | 상태 | 링크 |
 | :---: | :--- | :--- | :---: | :---: |
-| 2026-08-19 | 1차 레이어 안착 불량 | Z-Offset 재설정 (-1.25 -> -1.38mm) 및 베드 수동 레벨링 | `SOLVED` | [보기](./docs/troubleshooting/) |
-| 2026-08-15 | PETG 거미줄(Stringing) 현상 | Retraction 거리(6.5mm) 및 이동 속도(180mm/s) 증가 | `SOLVED` | [보기](./docs/troubleshooting/) |
 | YYYY-MM-DD | *이슈 제목 작성* | *간단한 원인 및 조치 내용* | `IN PROGRESS` | [보기](./docs/troubleshooting/) |
 
 ---
