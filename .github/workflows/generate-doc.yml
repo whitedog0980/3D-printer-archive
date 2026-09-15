@@ -1,0 +1,75 @@
+name: AI Doc Draft from Issue
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  generate-doc:
+    if: contains(github.event.issue.labels.*.name, 'log-entry')
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ISSUE_TITLE: ${{ github.event.issue.title }}
+      ISSUE_BODY_PATH: /tmp/issue_body.txt
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Dump issue body
+        run: |
+          cat > "$ISSUE_BODY_PATH" <<'EOF'
+          ${{ github.event.issue.body }}
+          EOF
+
+      - name: Generate document draft
+        id: gen
+        run: python scripts/generate_doc.py
+
+      - name: Create branch and commit
+        id: push
+        if: steps.gen.outputs.status == 'ok'
+        run: |
+          git config user.name "3d-archive-bot"
+          git config user.email "actions@users.noreply.github.com"
+          BRANCH="log/${{ steps.gen.outputs.slug }}"
+          git checkout -b "$BRANCH"
+          git add docs asset README.md
+          git commit -m "docs: ${{ steps.gen.outputs.category }} - ${{ github.event.issue.title }} (AI 초안, 이슈 #${{ github.event.issue.number }})"
+          git push origin "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Open PR
+        if: steps.gen.outputs.status == 'ok'
+        run: |
+          gh pr create \
+            --title "docs(${{ steps.gen.outputs.category }}): ${{ github.event.issue.title }}" \
+            --body "이슈 #${{ github.event.issue.number }} 에서 자동 생성된 초안입니다. 검토 후 머지하면 기록이 확정됩니다.
+
+          - 카테고리: ${{ steps.gen.outputs.category }}
+          - 생성 파일: \`docs/${{ steps.gen.outputs.category }}/${{ steps.gen.outputs.filename }}\`
+
+          Closes #${{ github.event.issue.number }}" \
+            --head "${{ steps.push.outputs.branch }}" \
+            --base main \
+            --label "needs-review"
+
+      - name: Comment on issue if generation failed
+        if: steps.gen.outputs.status != 'ok'
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body "⚠️ 문서 초안 생성에 실패했습니다. Actions 로그를 확인해주세요."
