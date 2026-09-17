@@ -48,9 +48,10 @@ ASSETS_DIR = REPO_ROOT / "asset"  # 실제 레포 폴더명이 단수 "asset" �
 CATEGORIES = ["troubleshooting", "quality", "maintenance", "parts"]
 MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
 MAX_IMAGE_WIDTH = 1600
-MAX_FEWSHOT_DOCS_PER_CATEGORY = 2
+MAX_FEWSHOT_DOCS_PER_CATEGORY = 3
 
 IMG_MD_RE = re.compile(r"!\[[^\]]*\]\((https?://[^\)\s]+)\)")
+IMG_HTML_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 
 
 def write_output(key: str, value: str):
@@ -87,9 +88,14 @@ def parse_issue_body(body: str):
     notes_match = re.search(r"###\s*메모\s*\n+(.*)", body, re.DOTALL)
     notes = notes_match.group(1).strip() if notes_match else body.strip()
 
-    image_urls = IMG_MD_RE.findall(body)
+    raw_urls = IMG_MD_RE.findall(body) + IMG_HTML_RE.findall(body)
+    seen = set()
+    image_urls = []
+    for u in raw_urls:
+        if u not in seen:
+            seen.add(u)
+            image_urls.append(u)
     return category, notes, image_urls
-
 
 def download_and_optimize_images(urls, tmp_category: str, slug: str):
     saved = []
@@ -199,7 +205,7 @@ def main():
     try:
         response = client.messages.create(
             model=MODEL,
-            max_tokens=2000,
+            max_tokens=3000,
             system=system_prompt,
             messages=[{"role": "user", "content": user_content}],
         )
