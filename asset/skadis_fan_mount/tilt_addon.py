@@ -1,25 +1,27 @@
 """
-Tilt (up/down) add-on for the v2 Skadis fan mount  -  rev.2: screw-tensioned knuckle hinge
+Tilt (up/down) add-on for the v2 Skadis fan mount  -  rev.3: screw-tensioned knuckle hinge UNDER the fan
 
 rev.1 (split pillow-block clamp) moved far too easily -> replaced by the same principle as the
 v2 swing hinge: P - F - P knuckles on ONE M3x40 that is both the hinge pin and the tensioner.
 Tighten the screw = stiffer tilt.
 
-Why the hinge sits ABOVE the fan:
+Hinge position:
   the tilt axis is X (perpendicular to the swing axis, in the fan plane). A screw on that axis
-  is driven along X. Through the fan centre the -X end is blocked by the fan and the +X end by
-  the bracket web, so the axis is moved over the fan's top edge: from the -X end the hex key now
-  reaches the screw head at ANY swing / tilt angle. The fan hangs from it like a door.
+  is driven along X. Through the fan centre both ends are blocked (fan / bracket web), so the axis
+  runs along the fan's BOTTOM edge (rev.2 had it on the top edge; rev.3 = user request: hinge
+  below). The hex key reaches the head from the -X end at any swing / tilt angle.
+  The controller sleeve is right under the fan, so the rail under the hinge has to pass over it:
+  the fan sits FB_W = -33 (27 mm higher than in v2). Lower FB_W -> less tilt range (see doc).
 
 Hardware: 3 more M3x40 (total 7)
   1 x  tilt hinge pin  : head in P_head (far end), threads into P_tap
-  2 x  fan -> cradle   : from the fan FRONT, through the corner hole, into the cradle's back pads
+  2 x  fan -> cradle   : from the fan FRONT, through the bottom corner holes, into the cradle's back pads
   (+ the 2 original fan screws now hold the frame's spine in fan_bracket's channel)
 
 Parts
-  tilt_frame   : spine (fits fan_bracket's channel) + riser + rail + 2 static knuckles
+  tilt_frame   : spine (fits fan_bracket's channel) + rail under the hinge + 2 static knuckles
                  (P_head hangs on a flexure post so the screw can squeeze the stack) + cable clip
-  tilt_cradle  : holds the fan by its 2 top corner holes + moving knuckle (F) + cable clip
+  tilt_cradle  : holds the fan by its 2 bottom corner holes + moving knuckle (F) + cable clip
 
 Same assembly frame as skadis_fan_mount.py (swing axis = Y, fan side x < 0, fan normal +z).
 Run: python3 tilt_addon.py
@@ -37,17 +39,20 @@ OUT = S.OUT
 FAN_X1 = -25.0                         # fan's hinge-side wall (spine ends at -24)
 FAN_X0 = FAN_X1 - S.FAN                # -145
 FAN_CX = (FAN_X0 + FAN_X1) / 2         # -85
-FB = -57.0                             # fan bottom: 3 mm over the controller sleeve (-60)
-FT = FB + S.FAN                        # 63
+FB_W = -33.0                           # WORLD fan bottom (hinge + rail must pass over the controller sleeve, top -60)
+# geometry below is written in a LOCAL frame with the hinge ABOVE the fan (y_local = -y_world);
+# tilt_frame()/tilt_cradle() mirror it so that in the world the hinge is UNDER the fan.
+FT = -FB_W                             # local "top" = world bottom
+FB = FT - S.FAN
 FAN_CY = (FB + FT) / 2                 # 3
 HOLE_Y = FAN_CY + S.FAN_HOLE / 2       # 55.5  (top corner holes)
 HOLE_XS = (FAN_CX - S.FAN_HOLE / 2, FAN_CX + S.FAN_HOLE / 2)   # -137.5, -32.5
 FZ0, FZ1 = -S.FAN_T / 2, S.FAN_T / 2
 
-# spine (replaces the fan inside the bracket channel) + riser
+# spine (replaces the fan inside the bracket channel)
 SP_X0, SP_X1 = -24.0, S.FX0 - 0.2      # -24 .. -10.2
 SP_Z = S.FAN_T / 2 - 0.2               # 12.3
-SP_Y0 = -S.FAN / 2 + 0.2
+SP_Y0, SP_Y1 = -S.FAN / 2 + 0.2, S.FAN / 2 - 0.2
 
 # tilt hinge
 KN_R = S.KN_R                          # 6
@@ -66,7 +71,7 @@ SEG_F = (HX0 + LP + GAP, HX0 + LP + GAP + LF)
 SEG_TAP = (HX1 - LP, HX1)
 
 # rail (static, above the hinge)
-RAIL_Y0, RAIL_Y1 = YA + KN_R + 0.5, YA + 14.0
+RAIL_Y0, RAIL_Y1 = YA + KN_R + 0.5, 59.5        # world: from under the hinge down to 0.5 over the sleeve
 RAIL_Z0, RAIL_Z1 = -SP_Z, 1.7
 ARCH_Y0 = YA + 25.0                    # rail arches over the moving knuckle: its web sweeps r <= 23.2
 ARCH_T, ARCH_LEG = 7.5, 5.0
@@ -78,8 +83,16 @@ PAD_Z0 = FZ0 - 4.0 - (S.SCREW_L - S.FAN_T - 4.0) - 1.0   # back of the pads: 1 m
 BAR_Z0, BAR_Z1 = PAD_Z0, FZ1
 
 
+YA_W = -YA                             # world tilt axis height
+
+
 def place_tilt(m, deg):
-    return m.translate([0, -YA, -ZA]).rotate([deg, 0, 0]).translate([0, YA, ZA])
+    """m in WORLD coordinates; +deg tilts the fan's top toward the back"""
+    return m.translate([0, -YA_W, -ZA]).rotate([-deg, 0, 0]).translate([0, YA_W, ZA])
+
+
+def to_world(m):
+    return m.mirror([0, 1, 0])
 
 
 def z_clip(cx, face_y, z0, z1, toward=1):
@@ -114,8 +127,8 @@ def foot(seg):
 
 
 # ---------------- parts ----------------
-def tilt_frame():
-    parts = [box(SP_X0, SP_X1, SP_Y0, RAIL_Y1, -SP_Z, SP_Z)]                               # spine + riser
+def _frame_local():
+    parts = [box(SP_X0, SP_X1, SP_Y0, SP_Y1, -SP_Z, SP_Z)]                                 # spine
     o0, o1 = SEG_F[0] - GAP, SEG_F[1] + GAP
     a0, a1 = ARCH_Y0, ARCH_Y0 + ARCH_T
     rail = [(HX0, RAIL_Y0), (o0, RAIL_Y0), (o0, a0), (o1, a0), (o1, RAIL_Y0), (SP_X1, RAIL_Y0),
@@ -141,18 +154,22 @@ def tilt_frame():
     # the 2 original fan screws now go through the spine
     for sy in (1, -1):
         body = body - cyl_z(S.M3_CLEAR / 2, -SP_Z - 1, SP_Z + 1, S.HOLE_X, sy * S.FAN_HOLE / 2)
-    # cable clip on the riser's outer (+X) face
-    body = body + x_clip(SP_X1, YA - 6.0, -SP_Z, -SP_Z + 6.5)
+    # cable clip on the far end of the rail (below the key path)
+    body = body + x_clip(HX0, (YA + POST_FREE + RAIL_Y1) / 2, -SP_Z, -SP_Z + 6.5, toward=-1)
     return body
 
 
-def tilt_cradle():
+def tilt_frame():
+    return to_world(_frame_local())
+
+
+def _cradle_local():
     parts = [box(FAN_X0, FAN_X1, FT, FT + BAR_T, BAR_Z0, BAR_Z1)]                           # bar on top of the fan
     for hx in HOLE_XS:                                                                     # back pads (threaded)
         parts.append(M.hull(cyl_z(6.0, BAR_Z0, FZ0, hx, HOLE_Y) + box(hx - 6, hx + 6, FT - 0.01, FT + 0.01, BAR_Z0, FZ0)))
     # moving knuckle + web down to the bar (and to the bed: support-free)
     parts.append(M.hull(knuckle(SEG_F) + box(SEG_F[0], SEG_F[1], FT, FT + BAR_T, BAR_Z0, ZA + KN_R - 0.3)))
-    parts.append(z_clip(FAN_X1 - 11.0, FT + BAR_T, BAR_Z0, BAR_Z0 + 7.0))
+    parts.append(z_clip(-125.0, FT + BAR_T, BAR_Z0, BAR_Z0 + 7.0))                        # far side: clear of sleeve
     body = union(parts)
     body = body - cyl_x(S.M3_CLEAR / 2, SEG_F[0] - 1, SEG_F[1] + 1, YA, ZA)
     for hx in HOLE_XS:
@@ -161,13 +178,17 @@ def tilt_cradle():
     return body
 
 
+def tilt_cradle():
+    return to_world(_cradle_local())
+
+
 def dummy_fan():
     f = box(-60, 60, -60, 60, FZ0, FZ1) - cyl_z(58, FZ0 - 1, FZ1 + 1)
     f = f + cyl_z(20, FZ0, FZ1)
     for sx in (-1, 1):
         for sy in (-1, 1):
             f = f - cyl_z(2.2, FZ0 - 1, FZ1 + 1, sx * 52.5, sy * 52.5)
-    return f.translate([FAN_CX, FAN_CY, 0])
+    return f.translate([FAN_CX, -FAN_CY, 0])
 
 
 def build():
@@ -185,4 +206,5 @@ if __name__ == '__main__':
         bb = printable.bounding_box()
         print(f'{name:12s} genus={printable.genus():2d} vol={printable.volume()/1000:6.1f}cm3 '
               f'size={bb[3]-bb[0]:.1f}x{bb[4]-bb[1]:.1f}x{bb[5]-bb[2]:.1f}')
-    print('axis y=%.1f z=%.1f  P_head %s  F %s  P_tap %s' % (YA, ZA, SEG_HEAD, SEG_F, SEG_TAP))
+    print('world: fan y %.1f..%.1f  tilt axis y=%.1f z=%.1f  P_head %s  F %s  P_tap %s'
+          % (FB_W, FB_W + S.FAN, YA_W, ZA, SEG_HEAD, SEG_F, SEG_TAP))

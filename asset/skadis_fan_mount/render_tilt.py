@@ -1,4 +1,4 @@
-"""Previews for the tilt add-on (rev.2, screw-tensioned knuckle hinge).  python3 render_tilt.py [tilt_deg]"""
+"""Previews for the tilt add-on (rev.3, screw-tensioned knuckle hinge under the fan).  python3 render_tilt.py [tilt_deg]"""
 import os, sys
 import matplotlib
 matplotlib.use('Agg')
@@ -15,13 +15,13 @@ def module():
 
 def hinge_screw():
     x_head = T.HX0 + S.HEAD_DEPTH
-    return (S.cyl_x(1.5, x_head, x_head + 40, T.YA, T.ZA)
-            + S.cyl_x(2.75, x_head - 3, x_head, T.YA, T.ZA))
+    return (S.cyl_x(1.5, x_head, x_head + 40, T.YA_W, T.ZA)
+            + S.cyl_x(2.75, x_head - 3, x_head, T.YA_W, T.ZA))
 
 
 def hex_key():
     x = T.HX0 + S.HEAD_DEPTH - 0.5
-    return S.cyl_x(1.25, x - 60, x, T.YA, T.ZA) + S.cyl_y(1.25, T.YA - 25, T.YA, x - 60, T.ZA)
+    return S.cyl_x(1.25, x - 60, x, T.YA_W, T.ZA) + S.cyl_y(1.25, T.YA_W, T.YA_W + 25, x - 60, T.ZA)
 
 
 def assembly(pan=0.0, tilt=0.0, board=True, key=False):
@@ -55,7 +55,7 @@ if __name__ == '__main__':
             (T.place_tilt(T.tilt_cradle(), tilt), '#8e5bd6'), (hinge_screw(), '#9a9a9a')]
     fig = plt.figure(figsize=(14, 6.5), dpi=110)
     R.draw(fig.add_subplot(1, 2, 1, projection='3d'), near, 20, -125, 'frame (green) + cradle (purple): P_head - F - P_tap')
-    R.draw(fig.add_subplot(1, 2, 2, projection='3d'), near, 15, 45, 'back: flexure post, rail arch over F, cable clips')
+    R.draw(fig.add_subplot(1, 2, 2, projection='3d'), near, 15, 45, 'back: flexure post, rail arch under F, cable clips')
     plt.tight_layout(); plt.savefig(os.path.join(S.OUT, 'preview_tilt_hinge.png'), facecolor='white'); plt.close()
 
     parts = T.build()
