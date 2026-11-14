@@ -351,23 +351,27 @@ def make_frame():
     return merge(revolve(pts, closed_loop=True))
 
 
+KNOB_LEN, KNOB_W = 24.0, 9.0         # 1자 손잡이 길이, 폭 (양 끝 반원)
+KNOB_FLOOR = 1.3                     # 너트 포켓 바닥 두께
+
+
 def knob_lengths():
-    stack = 2 * STACK_HALF
-    body = BOLT_LEN - 0.6 - NUT_T - stack     # 볼트 끝이 너트 위로 0.6 나오는 길이
-    return body, body + 3.0
+    """손잡이 높이와 손잡이 밖으로 나오는 볼트 길이."""
+    total = KNOB_FLOOR + NUT_T
+    return total, BOLT_LEN - 2 * STACK_HALF - total
 
 
 def make_knob():
-    """육각 조임 손잡이. 남는 볼트 길이를 속에 감추고 끝의 포켓에 M3 너트를 넣는다."""
-    body, total = knob_lengths()
-    apo = 4.7
-    outer = densify([(apo / math.cos(math.pi / 6) * math.cos(a),
-                      apo / math.cos(math.pi / 6) * math.sin(a)) for a in np.arange(6) * math.pi / 3])
+    """끝이 둥근 1자 손잡이. 위쪽 포켓에 M3 너트를 눌러 넣는다. 포켓이 위를 보게 출력."""
+    total, _ = knob_lengths()
+    r = KNOB_W / 2
+    outer = densify(arc(KNOB_LEN / 2 - r, 0, r, -math.pi / 2, math.pi / 2) +
+                    arc(-(KNOB_LEN / 2 - r), 0, r, math.pi / 2, 3 * math.pi / 2))
     rc = NUT_AF / 2 / math.cos(math.pi / 6)
-    pocket = densify([(rc * math.cos(a), rc * math.sin(a))
-                      for a in np.arange(6) * math.pi / 3 + math.pi / 6])
-    return merge(layered([(0, body, [outer], [circle(0, 0, BOLT_HOLE_R, 24)]),
-                          (body, total, [outer], [pocket])]))
+    pocket = densify([(rc * math.cos(a), rc * math.sin(a))       # 평평한 면이 손잡이 옆면과 나란함
+                      for a in np.arange(6) * math.pi / 3])
+    return merge(layered([(0, KNOB_FLOOR, [outer], [circle(0, 0, BOLT_HOLE_R, 24)]),
+                          (KNOB_FLOOR, total, [outer], [pocket])]))
 
 
 # ───────────────────────── 3MF 출력 ─────────────────────────
@@ -422,7 +426,7 @@ def build():
              ("lower_arm", 182, 104), ("upper_plate", 182, 120), ("upper_plate", 182, 134),
              ("head", 184, 152), ("screw_RH", 200, 148), ("screw_LH", 200, 160),
              ("frame", 232, 152),
-             ("knob", 182, 174), ("knob", 196, 174), ("knob", 210, 174), ("knob", 224, 174)]
+             ("knob", 196, 176), ("knob", 226, 176), ("knob", 196, 190), ("knob", 226, 190)]
     return objects, items
 
 
@@ -549,7 +553,9 @@ def main():
         assert lo.min() >= 0 and hi.max() <= 256, f"{name} is off the 256 mm plate"
     write_3mf(here / "k688_mic_stand.3mf", objects, items)
     lo, hi = strut_range()
-    print(f"strut length {lo:.1f}..{hi:.1f} mm, knob {knob_lengths()}")
+    total, stick = knob_lengths()
+    print(f"strut length {lo:.1f}..{hi:.1f} mm, knob height {total:.1f} mm, "
+          f"bolt sticks out {stick:.1f} mm")
     for name, c in POSES:
         b, ls = pose(c)
         print(f"  {name:4s} C={c} B=({b[0]:.0f},{b[1]:.0f}) strut {ls:.1f} "
