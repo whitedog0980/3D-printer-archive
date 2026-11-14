@@ -83,7 +83,7 @@ HEAD_OFF = 13.0          # C 축 -> 마이크 어깨면
 MIC_HEAD_D = 40.0
 SLEEVE_CLEAR = 0.4       # 지름 방향 여유 (끼워 넣는 헐거움)
 SLEEVE_WALL = 0.87       # Bambu 기본 선폭 바깥 0.42 + 안쪽 0.45
-SLEEVE_H = 50.0          # 길이
+SLEEVE_H = 70.0          # 길이
 SLEEVE_LEAD = 0.3        # 끼우는 쪽 안쪽 모따기
 
 # 손잡이: 끝이 둥근 1자, 너트 포켓이 관절 쪽을 향함
