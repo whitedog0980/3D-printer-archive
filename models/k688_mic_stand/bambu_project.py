@@ -55,7 +55,7 @@ PROCESS_OVERRIDES = {
     "support_object_xy_distance": "0.5",
     "support_interface_top_layers": "2",
     "support_interface_spacing": "0.5",
-    # 브림은 필요한 부품에만 (OBJECT_SETTINGS)
+    # 브림 없음
     "brim_type": "no_brim",
     # 필라멘트 1개라 프라임 타워 불필요
     "enable_prime_tower": "0",
@@ -66,11 +66,10 @@ FINE = {"layer_height": "0.12", "sparse_infill_density": "100%",
 
 # 부품 이름(접두어) -> 부품별 설정
 OBJECT_SETTINGS = {
-    "base": {"brim_type": "outer_only", "brim_width": "3"},
-    "head": {**FINE, "brim_type": "outer_only", "brim_width": "5"},
+    "head": FINE,
     "screw_RH": FINE,
     "screw_LH": FINE,
-    "frame": {**FINE, "brim_type": "outer_only", "brim_width": "4"},
+    "frame": FINE,
     "knob": {"sparse_infill_density": "100%"},
 }
 

@@ -517,7 +517,7 @@ def build():
         "frame": make_frame(),
         "knob": make_knob(),
     }
-    # 브림(바닥판 3, 헤드 5, 프레임 4 mm)이 서로 겹치지 않게 넉넉히 띄운다
+    # 부품 사이를 넉넉히 띄워 배치
     items = [("base", 15, 110),
              ("lower_arm", 140, 80), ("upper_plate", 140, 100), ("upper_plate", 140, 120),
              ("head", 215, 90), ("frame", 215, 130),
