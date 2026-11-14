@@ -79,6 +79,13 @@ CORNER = 1.5             # 육각 모서리 반지름
 FLANGE_APO = 8.6         # 헤드 육각 플랜지 맞변 반거리
 HEAD_OFF = 13.0          # C 축 -> 마이크 어깨면
 
+# 차음 원통: 마이크 헤드(Ø40)에 끼우는 얇은 원통. 벽 두께 = 0.4 노즐 2줄
+MIC_HEAD_D = 40.0
+SLEEVE_CLEAR = 0.4       # 지름 방향 여유 (끼워 넣는 헐거움)
+SLEEVE_WALL = 0.87       # Bambu 기본 선폭 바깥 0.42 + 안쪽 0.45
+SLEEVE_H = 50.0          # 길이
+SLEEVE_LEAD = 0.3        # 끼우는 쪽 안쪽 모따기
+
 # 손잡이: 끝이 둥근 1자, 너트 포켓이 관절 쪽을 향함
 KNOB_LEN, KNOB_W = 18.0, 9.0
 KNOB_CAP = 1.4           # 포켓 반대쪽 덮개 두께
@@ -485,6 +492,15 @@ def make_knob():
                          slab(KNOB_CAP, total, [outer], [pocket], ct=EDGE)))
 
 
+def make_mic_sleeve():
+    """마이크 헤드에 끼우는 차음 원통. 양쪽이 열려 있고 위쪽(끼우는 쪽) 안쪽을 모따기."""
+    ri = (MIC_HEAD_D + SLEEVE_CLEAR) / 2
+    ro = ri + SLEEVE_WALL
+    h = SLEEVE_H
+    return merge(revolve([(ri, 0), (ro, 0), (ro, h), (ri + SLEEVE_LEAD, h), (ri, h - SLEEVE_LEAD)],
+                         closed_loop=True))
+
+
 def bolt_check():
     """관절별 (이름, 적층 폭, 볼트 길이, 너트 밖으로 나온 길이, 손잡이 밖으로 나온 길이)."""
     out = []
@@ -516,13 +532,15 @@ def build():
         "screw_LH": make_rod(-1),
         "frame": make_frame(),
         "knob": make_knob(),
+        "mic_sleeve": make_mic_sleeve(),
     }
     # 부품 사이를 넉넉히 띄워 배치
     items = [("base", 15, 110),
              ("lower_arm", 140, 80), ("upper_plate", 140, 100), ("upper_plate", 140, 120),
              ("head", 215, 90), ("frame", 215, 130),
              ("screw_RH", 140, 145), ("screw_LH", 175, 145),
-             ("knob", 30, 170), ("knob", 55, 170), ("knob", 80, 170), ("knob", 105, 170)]
+             ("knob", 30, 170), ("knob", 55, 170), ("knob", 80, 170), ("knob", 105, 170),
+             ("mic_sleeve", 60, 220)]
     return objects, items
 
 

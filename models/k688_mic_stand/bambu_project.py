@@ -71,6 +71,8 @@ OBJECT_SETTINGS = {
     "screw_LH": FINE,
     "frame": FINE,
     "knob": {"sparse_infill_density": "100%"},
+    # 차음 원통: 벽 2줄로만 출력
+    "mic_sleeve": {"wall_loops": "2", "sparse_infill_density": "0%"},
 }
 
 FILAMENT = "Bambu PLA Basic @BBL A1"
