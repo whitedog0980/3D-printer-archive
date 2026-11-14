@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fifine K688 탁상 마이크 스탠드 v4 - 경량 다관절 + 턴버클 구조 생성기.
+"""Fifine K688 탁상 마이크 스탠드 v5 - 육각 디자인 다관절 + 턴버클 구조 생성기.
 
 작은 V자 바닥판 위에 2절 암(A-B-C)과 길이 조절 스트럿(D-C)을 세운 구조다.
 스트럿은 양 끝에 너트가 달린 속 빈 프레임에 긴 나사 2개가 들어가는 턴버클이다.
@@ -47,7 +47,7 @@ TB_PITCH, TB_CREST, TB_DEPTH = 2.0, 0.4, 0.6
 TB_MAJOR_R = 3.6
 TB_CLEAR = 0.3
 EYE_HALF = 2.8           # 아이 두께 5.6 = 나사 양면을 깎은 평면 간격
-EYE_R = 4.5
+EYE_R = 4.5              # 아이 육각 맞변 반거리
 ROD_E = 6.5              # 아이 중심 -> 나사 시작
 ROD_THREAD_LEN = 12.0    # 긴 나사 (프레임 절반 길이까지 들어감)
 FRAME_LEN = 24.0         # 프레임(보라색) 길이
@@ -73,7 +73,10 @@ PIVOT_Z = 13.0           # 손잡이가 바닥판에 닿지 않고 한 바퀴 �
 A_X, D_X = 7.0, 37.0     # 암 피벗, 스트럿 피벗
 
 LINK_LEN = 36.0          # 아래팔(AB), 위팔(BC) 길이
-LINK_R = 4.5             # 링크 폭 9
+LINK_R = 4.5             # 링크 폭 9 (육각 끝의 맞변 거리)
+HEX_R = LINK_R / math.cos(math.pi / 6)   # 육각 끝 꼭짓점 거리 5.2
+CORNER = 1.5             # 육각 모서리 반지름
+FLANGE_APO = 8.6         # 헤드 육각 플랜지 맞변 반거리
 HEAD_OFF = 13.0          # C 축 -> 마이크 어깨면
 
 # 손잡이: 끝이 둥근 1자, 너트 포켓이 관절 쪽을 향함
@@ -216,6 +219,34 @@ def inset(loop, d):
     return np.round(loop + m * scale[:, None], 5)
 
 
+def rounded_hex(cx, cy, apothem, corner_r, pointy_top=False):
+    """모서리가 둥근 정육각형. 기본은 위아래가 평평한 면(꼭짓점이 좌우)."""
+    R = apothem / math.cos(math.pi / 6)
+    rot = math.pi / 6 if pointy_top else 0.0
+    verts = [(cx + R * math.cos(rot + k * math.pi / 3), cy + R * math.sin(rot + k * math.pi / 3))
+             for k in range(6)]
+    return densify(fillet(verts, [corner_r] * 6))
+
+
+def hex_bar(length, apothem, corner_r, x0=0.0):
+    """양 끝이 육각형 꼭짓점인 막대. 두 구멍 중심이 (x0, 0), (x0 + length, 0)."""
+    R = apothem / math.cos(math.pi / 6)
+    pts = [(x0 - R / 2, -apothem), (x0 + length + R / 2, -apothem), (x0 + length + R, 0),
+           (x0 + length + R / 2, apothem), (x0 - R / 2, apothem), (x0 - R, 0)]
+    return densify(fillet(pts, [corner_r] * 6))
+
+
+def polar(outline):
+    """원점 기준 볼록 윤곽 -> 각도별 반지름 함수 (revolve 용)."""
+    ang = np.arctan2(outline[:, 1], outline[:, 0])
+    rad = np.hypot(outline[:, 0], outline[:, 1])
+    order = np.argsort(ang)
+    ang, rad = ang[order], rad[order]
+    ang = np.concatenate([ang - 2 * math.pi, ang, ang + 2 * math.pi])
+    rad = np.tile(rad, 3)
+    return lambda th: np.interp((np.asarray(th) + math.pi) % (2 * math.pi) - math.pi, ang, rad)
+
+
 def stadium(length, r, x0=0.0):
     return densify(arc(x0 + length, 0, r, -math.pi / 2, math.pi / 2) +
                    arc(x0, 0, r, math.pi / 2, 3 * math.pi / 2))
@@ -332,12 +363,14 @@ def base_outline():
 
 def make_base():
     outline = base_outline()
-    lighten = stadium(9.0, 3.0, x0=16.0)            # 꼭짓점 쪽 경량 구멍
+    lighten = hex_bar(8.0, 3.0, 1.0, x0=17.0)       # 꼭짓점 쪽 경량 구멍
     shells = [layered(slab(0, BASE_T, [outline], [lighten], cb=EDGE, ct=0.6))]
 
     def ear(cx, y_in, y_out):
-        prof = densify([(cx - LINK_R, BASE_T - 1.0), (cx + LINK_R, BASE_T - 1.0)] +
-                       arc(cx, PIVOT_Z, LINK_R, 0, math.pi))
+        z0 = BASE_T - 1.0
+        prof = densify(fillet([(cx - LINK_R, z0), (cx + LINK_R, z0), (cx + LINK_R, PIVOT_Z + HEX_R / 2),
+                               (cx, PIVOT_Z + HEX_R), (cx - LINK_R, PIVOT_Z + HEX_R / 2)],
+                              [0, 0, CORNER, CORNER, CORNER]))      # 위쪽이 육각형
         hole = [circle(cx, PIVOT_Z, BOLT_HOLE_R)]
         # ROT_Y 로 로컬 w -> -Y. 바깥 면(|Y| = y_out)에만 모따기
         return [place(layered(slab(y_in, y_out, [prof], hole, ct=EDGE)), ROT_Y),
@@ -355,8 +388,8 @@ def link_holes():
 def make_upper_plate():
     """위팔(BC) 판. 2장이 한 쌍. 가운데에 경량 슬롯."""
     t = STACK_HALF - PLATE_IN
-    slot = stadium(LINK_LEN - 19.0, 1.5, x0=9.5)
-    return merge(layered(slab(0, t, [stadium(LINK_LEN, LINK_R)], link_holes() + [slot],
+    slot = hex_bar(LINK_LEN - 21.0, 1.5, 0.5, x0=10.5)
+    return merge(layered(slab(0, t, [hex_bar(LINK_LEN, LINK_R, CORNER)], link_holes() + [slot],
                               cb=EDGE, ct=EDGE)))
 
 
@@ -365,9 +398,9 @@ def make_lower_arm():
     rail = 2.4
     full = 2 * CHEEK_OUT
     mid = LINK_LEN / 2
-    hubs = [circle(0, 0, 3.6), circle(LINK_LEN, 0, 3.6),
+    hubs = [rounded_hex(0, 0, 3.6, 1.0), rounded_hex(LINK_LEN, 0, 3.6, 1.0),
             densify([(mid - 2, -3.5), (mid + 2, -3.5), (mid + 2, 3.5), (mid - 2, 3.5)])]
-    bar = stadium(LINK_LEN, LINK_R)
+    bar = hex_bar(LINK_LEN, LINK_R, CORNER)
     return merge(layered(slab(0, rail, [bar], link_holes(), cb=EDGE) +
                          [(rail, full - rail, hubs, link_holes())] +
                          slab(full - rail, full, [bar], link_holes(), ct=EDGE)))
@@ -375,9 +408,11 @@ def make_lower_arm():
 
 def make_head():
     """C 관절에 물리는 포크형 헤드 + 5/8\"-27 수나사. 볼 바닥이 베드에 닿는다."""
-    r = LINK_R
-    cheek = densify([(r, 8), (-r, 8), (-r, 5)] + arc(0, 0, r, math.pi, 2 * math.pi) + [(r, 5)])
-    bridge = densify([(-r, 5), (r, 5), (r, 8), (-r, 8)])
+    a, R = LINK_R, HEX_R
+    # 아래쪽 절반은 바닥이 평평한 육각형, 위쪽은 브리지로 이어지는 수직 벽
+    cheek = densify(fillet([(-R / 2, -a), (R / 2, -a), (R, 0), (R, 5), (R, 8), (-R, 8), (-R, 5), (-R, 0)],
+                           [CORNER, CORNER, 2.0, 0, 1.0, 1.0, 0, 2.0]))
+    bridge = densify(fillet([(-R, 5), (R, 5), (R, 8), (-R, 8)], [0, 0, 1.0, 1.0]))
     hole = [circle(0, 0, BOLT_HOLE_R)]
     fork = layered(slab(-CHEEK_OUT, -CHEEK_IN, [cheek], hole, cb=EDGE) +
                    [(-CHEEK_IN, CHEEK_IN, [bridge], [])] +
@@ -386,9 +421,16 @@ def make_head():
     minor = float(mic_r(np.array([0.0]), MIC_PITCH / 2)[0])
     stud = thread_rows(mic_r, HEAD_OFF, top, MIC_PITCH / 16,
                        lambda rr, z: np.minimum(rr, minor - 0.3 + (top - z)))
-    boss = revolve([(0, 7), (4.4, 7), (4.4, 8), (9.0, 12.6),
-                    (9.0, HEAD_OFF - 0.25), (8.75, HEAD_OFF), *stud, (0, top)])
-    return merge(place(fork, ROT_Y, (0, 0, r)), place(boss, None, (0, 0, r)))
+    global SEG
+    seg, SEG = SEG, 0.2
+    flange = polar(rounded_hex(0, 0, FLANGE_APO, CORNER))
+    flange_top = polar(rounded_hex(0, 0, FLANGE_APO - 0.25, CORNER - 0.25))
+    SEG = seg
+    s0 = 4.4 / FLANGE_APO
+    small = lambda th: s0 * flange(th)
+    boss = revolve([(0, 7), (small, 7), (small, 8), (flange, 8 + (FLANGE_APO - 4.4)),
+                    (flange, HEAD_OFF - 0.25), (flange_top, HEAD_OFF), *stud, (0, top)])
+    return merge(place(fork, ROT_Y, (0, 0, a)), place(boss, None, (0, 0, a)))
 
 
 def make_rod(hand):
@@ -405,8 +447,7 @@ def make_rod(hand):
     n = int(round((top - 3.5) / (0.125 * TH_STEP))) + 1
     rows = [((lambda th, z=z: radius(th, z)), z) for z in np.linspace(3.5, top, n)]
     screw = revolve([(0, 3.5), *rows, (0, top)])
-    a0 = math.asin(3.0 / EYE_R)
-    outline = densify([(5.5, -3.0), (5.5, 3.0)] + arc(0, 0, EYE_R, a0, 2 * math.pi - a0))
+    outline = rounded_hex(0, 0, EYE_R, 1.2)                        # 꼭짓점이 나사 쪽
     eye = layered(slab(-EYE_HALF, EYE_HALF, [outline], [circle(0, 0, BOLT_HOLE_R)],
                        cb=0.3, ct=0.3))
     lay = np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0]], float)   # 나사 축 -> X, 평면 -> 수평
@@ -455,40 +496,14 @@ def bolt_check():
 
 
 # ───────────────────────── 3MF 출력 ─────────────────────────
-def write_3mf(path, objects, items):
-    """objects: {이름: (verts, tris)}, items: [(이름, x, y)]"""
-    names = list(objects)
-    out = ['<?xml version="1.0" encoding="UTF-8"?>',
-           '<model unit="millimeter" xml:lang="ko-KR" '
-           'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">',
-           ' <metadata name="Title">Fifine K688 mic stand v4</metadata>',
-           ' <resources>']
-    for i, name in enumerate(names, 1):
-        v, t = objects[name]
-        out.append(f'  <object id="{i}" type="model" name="{name}"><mesh><vertices>')
-        out.extend(f'<vertex x="{x:.4f}" y="{y:.4f}" z="{z:.4f}"/>' for x, y, z in v)
-        out.append('</vertices><triangles>')
-        out.extend(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in t)
-        out.append('</triangles></mesh></object>')
-    out.append(' </resources>\n <build>')
+def bambu_items(items):
+    """[(형상, x, y)] -> [(오브젝트 이름, 형상, x, y)]. 같은 형상이 여러 개면 _1, _2 를 붙인다."""
+    count = {n: sum(m == n for m, _, _ in items) for n, _, _ in items}
+    seen, out = {}, []
     for name, x, y in items:
-        out.append(f'  <item objectid="{names.index(name) + 1}" '
-                   f'transform="1 0 0 0 1 0 0 0 1 {x} {y} 0"/>')
-    out.append(' </build>\n</model>')
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("[Content_Types].xml",
-                   '<?xml version="1.0" encoding="UTF-8"?>'
-                   '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-                   '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-                   '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>'
-                   '</Types>')
-        z.writestr("_rels/.rels",
-                   '<?xml version="1.0" encoding="UTF-8"?>'
-                   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-                   '<Relationship Target="/3D/3dmodel.model" Id="rel0" '
-                   'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>'
-                   '</Relationships>')
-        z.writestr("3D/3dmodel.model", "\n".join(out))
+        seen[name] = seen.get(name, 0) + 1
+        out.append((f"{name}_{seen[name]}" if count[name] > 1 else name, name, x, y))
+    return out
 
 
 def build():
@@ -502,11 +517,12 @@ def build():
         "frame": make_frame(),
         "knob": make_knob(),
     }
-    items = [("base", 70, 128),
-             ("lower_arm", 182, 104), ("upper_plate", 182, 120), ("upper_plate", 182, 134),
-             ("head", 184, 152), ("screw_RH", 200, 148), ("screw_LH", 200, 160),
-             ("frame", 232, 152),
-             ("knob", 196, 176), ("knob", 222, 176), ("knob", 196, 190), ("knob", 222, 190)]
+    # 브림(바닥판 3, 헤드 5, 프레임 4 mm)이 서로 겹치지 않게 넉넉히 띄운다
+    items = [("base", 15, 110),
+             ("lower_arm", 140, 80), ("upper_plate", 140, 100), ("upper_plate", 140, 120),
+             ("head", 215, 90), ("frame", 215, 130),
+             ("screw_RH", 140, 145), ("screw_LH", 175, 145),
+             ("knob", 30, 170), ("knob", 55, 170), ("knob", 80, 170), ("knob", 105, 170)]
     return objects, items
 
 
@@ -553,6 +569,18 @@ def draw_assembly(path):
         n = np.array([-u[1], u[0]])
         return np.array([p + u * a + n * hw, p + u * b + n * hw, p + u * b - n * hw, p + u * a - n * hw])
 
+    def bar(p, q):
+        p, q = np.asarray(p, float), np.asarray(q, float)
+        d = q - p
+        ang = math.atan2(d[1], d[0])
+        rot = np.array([[math.cos(ang), -math.sin(ang)], [math.sin(ang), math.cos(ang)]])
+        return hex_bar(float(np.linalg.norm(d)), LINK_R, CORNER) @ rot.T + p
+
+    def ear(px):
+        return np.array(fillet([(px - LINK_R, 0), (px + LINK_R, 0), (px + LINK_R, PIVOT_Z + HEX_R / 2),
+                                (px, PIVOT_Z + HEX_R), (px - LINK_R, PIVOT_Z + HEX_R / 2)],
+                               [0, 0, CORNER, CORNER, CORNER]))
+
     lo, hi = strut_range()
     fig, axes = plt.subplots(1, 4, figsize=(17, 4.4))
     for ax, (name, c) in zip(axes, POSES):
@@ -562,15 +590,18 @@ def draw_assembly(path):
         up = np.array([0.0, 1.0])
         ax.add_patch(Polygon([[0, 0], [BASE_L, 0], [BASE_L, BASE_T], [0, BASE_T]], fc="0.75", ec="k", lw=0.6))
         for px in (A_X, D_X):
-            ax.add_patch(Polygon(capsule((px, BASE_T), (px, PIVOT_Z), LINK_R), fc="0.75", ec="k", lw=0.6))
+            ax.add_patch(Polygon(ear(px), fc="0.75", ec="k", lw=0.6))
             ax.add_patch(Circle((px, PIVOT_Z), KNOB_LEN / 2, fill=False, ls="--", ec="0.5", lw=0.6))
         ax.add_patch(Polygon(box(D, u, 0, ls, 3.3), fc="tab:blue", ec="k", lw=0.5))
         off = (ls - FRAME_LEN) / 2
         ax.add_patch(Polygon(box(D, u, off, off + FRAME_LEN, FRAME_R), fc="tab:purple", ec="k", lw=0.5, alpha=0.75))
-        ax.add_patch(Polygon(capsule(A, b, LINK_R), fc="0.2", ec="k", lw=0.6))
-        ax.add_patch(Polygon(capsule(b, c, LINK_R), fc="0.5", ec="k", lw=0.6))
-        ax.add_patch(Polygon(box(c, up, -LINK_R, 8, LINK_R), fc="tab:green", ec="k", lw=0.5))
-        ax.add_patch(Polygon(box(c, up, 8, HEAD_OFF, 9), fc="tab:green", ec="k", lw=0.5))
+        ax.add_patch(Polygon(bar(A, b), fc="0.2", ec="k", lw=0.6))
+        ax.add_patch(Polygon(bar(b, c), fc="0.5", ec="k", lw=0.6))
+        head = np.array(fillet([(-HEX_R / 2, -LINK_R), (HEX_R / 2, -LINK_R), (HEX_R, 0), (HEX_R, 8),
+                                (FLANGE_APO, 8 + FLANGE_APO - 4.4), (FLANGE_APO, HEAD_OFF),
+                                (-FLANGE_APO, HEAD_OFF), (-FLANGE_APO, 8 + FLANGE_APO - 4.4),
+                                (-HEX_R, 8), (-HEX_R, 0)], [CORNER, CORNER, 2, 0, 0, 0, 0, 0, 0, 2])) + c
+        ax.add_patch(Polygon(head, fc="tab:green", ec="k", lw=0.5))
         ax.add_patch(Polygon(box(c, up, HEAD_OFF, HEAD_OFF + MIC_LEN, MIC_MAJOR_R), fc="tab:orange", ec="k", lw=0.5))
         for p in (A, b, c, D):
             ax.add_patch(Circle(p, 1.7, fc="white", ec="k", lw=0.8, zorder=5))
@@ -580,7 +611,7 @@ def draw_assembly(path):
     ax = axes[3]
     ol = base_outline()
     ax.add_patch(Polygon(ol[:, ::-1], fc="0.75", ec="k", lw=0.8))
-    ax.add_patch(Polygon(stadium(9.0, 3.0, x0=16.0)[:, ::-1], fc="white", ec="k", lw=0.6))
+    ax.add_patch(Polygon(hex_bar(8.0, 3.0, 1.0, x0=17.0)[:, ::-1], fc="white", ec="k", lw=0.6))
     for px, yin, yout in ((A_X, PLATE_IN, STACK_HALF), (D_X, CHEEK_IN, D_HALF)):
         for s in (1, -1):
             ax.add_patch(Polygon([(s * yin, px - LINK_R), (s * yout, px - LINK_R),
@@ -613,7 +644,7 @@ def draw_preview(path):
         shade = 0.35 + 0.6 * np.clip(nrm @ light, 0, 1)
         ax.add_collection3d(Poly3DCollection(
             tri, facecolors=np.c_[shade * 0.55, shade * 0.75, shade], edgecolor="none"))
-    ax.set_xlim(60, 250); ax.set_ylim(60, 250); ax.set_zlim(0, 190)
+    ax.set_xlim(0, 256); ax.set_ylim(0, 256); ax.set_zlim(0, 256)
     ax.set_box_aspect((1, 1, 1)); ax.view_init(elev=40, azim=-60)
     ax.set_xlabel("X"); ax.set_ylabel("Y")
     fig.tight_layout(); fig.savefig(path, dpi=90)
@@ -641,7 +672,9 @@ def main():
         assert past_nut >= 0, f"M3x{bolt} does not reach through the nut at {name}"
         assert past_knob <= 0, f"M3x{bolt} sticks out of the knob at {name}"
     assert PIVOT_Z - KNOB_LEN / 2 > BASE_T + 0.5, "knob hits the base plate"
-    write_3mf(here / "k688_mic_stand.3mf", objects, items)
+    import bambu_project
+    bambu_project.write(here / "k688_mic_stand.3mf", objects, bambu_items(items),
+                        "Fifine K688 mic stand v5")
     lo, hi = strut_range()
     print(f"strut length {lo:.1f}..{hi:.1f} mm")
     for name, c in POSES:
