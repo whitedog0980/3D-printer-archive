@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Fifine K688 탁상 마이크 스탠드 v3 - 슬림 다관절 + 턴버클 구조 생성기.
+"""Fifine K688 탁상 마이크 스탠드 v4 - 경량 다관절 + 턴버클 구조 생성기.
 
 작은 V자 바닥판 위에 2절 암(A-B-C)과 길이 조절 스트럿(D-C)을 세운 구조다.
 스트럿은 양 끝에 너트가 달린 속 빈 프레임에 긴 나사 2개가 들어가는 턴버클이다.
-관절은 M3x40 볼트 + 너트로 조여 마찰로 고정한다.
+관절은 M3 볼트(A·B·C: 20 mm, D: 16 mm) + 너트로 조여 마찰로 고정한다.
 
     python3 generate.py            # k688_mic_stand.3mf
     python3 generate.py --figures  # assembly.png, preview.png 도 생성
@@ -12,7 +12,8 @@
 
 형상은 두 가지 방식으로만 만든다.
   - revolve(): 축대칭 프로파일 회전 (나사산은 반지름을 각도의 함수로 둠)
-  - layered(): 2D 윤곽(구멍 포함)을 층별로 쌓아 올린 압출
+  - layered(): 2D 윤곽(구멍 포함)을 층별로 쌓아 올린 압출. 층의 윗면과 아랫면 윤곽을
+               다르게 주면 모따기가 된다.
 서로 다른 방향의 형상은 겹쳐 놓은 닫힌 셸로 합친다(슬라이서가 합집합 처리).
 """
 import math
@@ -28,9 +29,11 @@ from scipy.spatial import Delaunay
 N_THETA = 144            # 회전체 원주 분할 수
 SEG = 1.0                # 압출 윤곽 최대 선분 길이
 TH_STEP = 1.0            # 나사산 축방향 샘플 배율 (미리보기에서만 키움)
+EDGE = 0.4               # 모서리 모따기
 
-# 철물: M3 x 40 볼트 + 너트
-BOLT_LEN = 40.0
+# 철물: M3 볼트 (12 / 16 / 20 / 25 mm 보유) + 너트
+BOLT_ARM = 20.0          # A, B, C 관절
+BOLT_D = 16.0            # D 관절
 BOLT_HOLE_R = 1.7        # Ø3.4 관통 구멍
 NUT_AF, NUT_T = 5.7, 2.4 # 너트 포켓 맞변 거리 (M3 너트 5.5), 너트 두께
 
@@ -53,23 +56,30 @@ FRAME_NUT_AF = 11.0
 FRAME_R = 6.4
 FRAME_BORE_R = 4.7       # 가운데 빈 속
 
-# Y 방향 적층 (중심 기준 반폭) - 모든 관절 공통 폭 21.6
-CHEEK_IN, CHEEK_OUT = 2.9, 6.6       # 헤드 볼 / 아래팔 반폭
-PLATE_IN, STACK_HALF = 6.8, 10.8     # 위팔 판 / 바닥판 귀
+# Y 방향 적층 (중심 기준 반폭)
+CHEEK_IN, CHEEK_OUT = 2.9, 5.4       # 헤드 볼 두께 2.5 / 아래팔 반폭
+PLATE_IN, STACK_HALF = 5.6, 8.6      # 위팔 판·A 귀 두께 3.0 -> A·B·C 적층 17.2
+D_HALF = 6.4                         # D 귀 두께 3.5 -> D 적층 12.8
 
 # 바닥판 (x: 꼭짓점 -> 다리 끝)
-BASE_T = 4.0
+BASE_T = 3.0
 BASE_L = 96.0
-BASE_STEM_HW, BASE_STEM_L = 11.5, 30.0
-BASE_TIP_HW = 27.0
-LEG_TIP_W = 9.0
+BASE_STEM_HW, BASE_STEM_L = STACK_HALF + 1.0, 30.0
+BASE_TIP_HW = 27.0       # 다리 끝 바깥 반폭 (받침 폭 54)
+TIP_W = 4.5              # 잘라낸 다리 끝 폭
+CUT_X = 56.0             # 다리 안쪽을 잘라내기 시작하는 위치
 NOTCH_X = 32.5           # V 안쪽 꼭짓점
-PIVOT_Z = 10.0
+PIVOT_Z = 13.0           # 손잡이가 바닥판에 닿지 않고 한 바퀴 돌 수 있는 높이
 A_X, D_X = 7.0, 37.0     # 암 피벗, 스트럿 피벗
 
 LINK_LEN = 36.0          # 아래팔(AB), 위팔(BC) 길이
-LINK_R = 5.0             # 링크 폭 10
+LINK_R = 4.5             # 링크 폭 9
 HEAD_OFF = 13.0          # C 축 -> 마이크 어깨면
+
+# 손잡이: 끝이 둥근 1자, 너트 포켓이 관절 쪽을 향함
+KNOB_LEN, KNOB_W = 18.0, 9.0
+KNOB_CAP = 1.4           # 포켓 반대쪽 덮개 두께
+KNOB_POCKET = NUT_T - 0.1            # 너트가 0.1 튀어나와 관절 면을 직접 누름
 
 
 # ───────────────────────── 기본 도구 ─────────────────────────
@@ -147,7 +157,9 @@ def densify(poly):
     for a, b in zip(poly, poly[1:] + poly[:1]):
         n = max(1, int(math.ceil(np.linalg.norm(b - a) / SEG)))
         out.extend(a + (b - a) * k / n for k in range(n))
-    return np.round(np.array(out), 5)
+    out = np.round(np.array(out), 5)
+    keep = np.any(out != np.roll(out, 1, axis=0), axis=1)
+    return out[keep]
 
 
 def arc(cx, cy, r, a0, a1):
@@ -161,13 +173,57 @@ def circle(cx, cy, r, n=40):
                     for a in np.linspace(0, 2 * math.pi, n, endpoint=False)])
 
 
+def fillet(poly, radii):
+    """다각형 꼭짓점마다 반지름 radii[i] 의 원호로 모서리를 둥글린다 (0 이면 그대로)."""
+    pts = [np.asarray(p, float) for p in poly]
+    n, out = len(pts), []
+    for i, (p, r) in enumerate(zip(pts, radii)):
+        if r <= 0:
+            out.append(tuple(p))
+            continue
+        a, b = pts[i - 1], pts[(i + 1) % n]
+        u = (a - p) / np.linalg.norm(a - p)
+        v = (b - p) / np.linalg.norm(b - p)
+        ang = math.acos(float(np.clip(u @ v, -1, 1)))
+        d = r / math.tan(ang / 2)
+        assert d < np.linalg.norm(a - p) and d < np.linalg.norm(b - p), f"fillet too big at {p}"
+        t1, t2 = p + u * d, p + v * d
+        bis = (u + v) / np.linalg.norm(u + v)
+        c = p + bis * (r / math.sin(ang / 2))
+        a1 = math.atan2(*(t1 - c)[::-1])
+        a2 = math.atan2(*(t2 - c)[::-1])
+        da = (a2 - a1 + math.pi) % (2 * math.pi) - math.pi
+        m = max(3, int(abs(da) * r / SEG) + 2)
+        out += [tuple(c + r * np.array([math.cos(t), math.sin(t)]))
+                for t in np.linspace(a1, a1 + da, m)]
+    return out
+
+
 def area2(loop):
     x, y = loop[:, 0], loop[:, 1]
     return float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
 
 
+def inset(loop, d):
+    """윤곽을 안쪽으로 d 만큼 옮긴다. 점 개수와 순서는 그대로."""
+    s = 1.0 if area2(loop) > 0 else -1.0
+    e = np.roll(loop, -1, axis=0) - loop
+    nrm = s * np.c_[-e[:, 1], e[:, 0]] / np.linalg.norm(e, axis=1, keepdims=True)
+    prev = np.roll(nrm, 1, axis=0)
+    m = prev + nrm
+    m /= np.linalg.norm(m, axis=1, keepdims=True)
+    scale = d / np.maximum(np.einsum("ij,ij->i", m, nrm), 0.5)
+    return np.round(loop + m * scale[:, None], 5)
+
+
+def stadium(length, r, x0=0.0):
+    return densify(arc(x0 + length, 0, r, -math.pi / 2, math.pi / 2) +
+                   arc(x0, 0, r, math.pi / 2, 3 * math.pi / 2))
+
+
 def layered(layers):
-    """층별 압출. layers = [(z0, z1, [바깥 윤곽...], [구멍...])], z 연속."""
+    """층별 압출. layers = [(z0, z1, [바깥 윤곽...], [구멍...])], z 연속.
+    윤곽 대신 (아랫면 윤곽, 윗면 윤곽) 쌍을 주면 그 사이를 비스듬히 잇는다(모따기)."""
     index, verts, tris = {}, [], []
 
     def vid(x, y, z):
@@ -177,37 +233,44 @@ def layered(layers):
             verts.append(key)
         return index[key]
 
-    def inside(layer, pts):
+    def at(loop, end):
+        return loop[end] if isinstance(loop, tuple) else loop
+
+    def inside(layer, pts, end):
         if layer is None:
             return np.zeros(len(pts), bool)
         m = np.zeros(len(pts), bool)
         for o in layer[2]:
-            m |= MplPath(o).contains_points(pts)
+            m |= MplPath(at(o, end)).contains_points(pts)
         for h in layer[3]:
-            m &= ~MplPath(h).contains_points(pts)
+            m &= ~MplPath(at(h, end)).contains_points(pts)
         return m
 
     for z0, z1, outers, holes in layers:
-        loops = [o if area2(o) > 0 else o[::-1] for o in outers]
-        loops += [h if area2(h) < 0 else h[::-1] for h in holes]
-        for lp in loops:
-            for p, q in zip(lp, np.roll(lp, -1, axis=0)):
-                a, b = vid(*p, z0), vid(*q, z0)
-                c, d = vid(*q, z1), vid(*p, z1)
+        for lp, want in [(o, 1) for o in outers] + [(h, -1) for h in holes]:
+            lo, hi = at(lp, 0), at(lp, 1)
+            if (area2(lo) > 0) != (want > 0):
+                lo, hi = lo[::-1], hi[::-1]
+            for i in range(len(lo)):
+                j = (i + 1) % len(lo)
+                a, b = vid(*lo[i], z0), vid(*lo[j], z0)
+                c, d = vid(*hi[j], z1), vid(*hi[i], z1)
                 tris += [(a, b, c), (a, c, d)]
 
     for k in range(len(layers) + 1):
         below = layers[k - 1] if k > 0 else None
         above = layers[k] if k < len(layers) else None
         z = above[0] if above else below[1]
-        pts = np.unique(np.vstack([lp for L in (below, above) if L for lp in L[2] + L[3]]), axis=0)
+        loops = [at(lp, 1) for lp in (below[2] + below[3] if below else [])]
+        loops += [at(lp, 0) for lp in (above[2] + above[3] if above else [])]
+        pts = np.unique(np.vstack(loops), axis=0)
         lo, hi = pts.min(0) - 500, pts.max(0) + 500
         sup = np.array([[lo[0], lo[1]], [hi[0], lo[1]], [hi[0], hi[1]], [lo[0], hi[1]]])
         dt = Delaunay(np.vstack([pts, sup]))
         assert dt.coplanar.size == 0, "Delaunay dropped boundary points"
         s = dt.simplices[(dt.simplices < len(pts)).all(axis=1)]
         cen = pts[s].mean(axis=1)
-        b_in, a_in = inside(below, cen), inside(above, cen)
+        b_in, a_in = inside(below, cen, 1), inside(above, cen, 0)
         p0, p1, p2 = pts[s[:, 0]], pts[s[:, 1]], pts[s[:, 2]]
         ccw = ((p1 - p0)[:, 0] * (p2 - p0)[:, 1] - (p1 - p0)[:, 1] * (p2 - p0)[:, 0]) > 0
         for tri, up, dn, is_ccw in zip(s, b_in & ~a_in, a_in & ~b_in, ccw):
@@ -220,6 +283,17 @@ def layered(layers):
     v, t = np.array(verts, float), np.array(tris, np.int64)
     assert check_watertight(t), "layered shell is not watertight"
     return v, t
+
+
+def slab(z0, z1, outers, holes, cb=0.0, ct=0.0):
+    """z0~z1 판. cb, ct 만큼 아랫면/윗면 바깥 모서리를 모따기한 층 목록."""
+    layers = []
+    if cb > 0:
+        layers.append((z0, z0 + cb, [(inset(o, cb), o) for o in outers], holes))
+    layers.append((z0 + cb, z1 - ct, outers, holes))
+    if ct > 0:
+        layers.append((z1 - ct, z1, [(o, inset(o, ct)) for o in outers], holes))
+    return layers
 
 
 # 압출 축(로컬 z)을 Y 로 눕히는 회전: (x, u, w) -> (x, -w, u)
@@ -241,32 +315,36 @@ def merge(*meshes):
     return np.vstack(vs), np.vstack(ts)
 
 
-def stadium(length, r):
-    return densify(arc(length, 0, r, -math.pi / 2, math.pi / 2) +
-                   arc(0, 0, r, math.pi / 2, 3 * math.pi / 2))
-
-
 # ───────────────────────── 부품 ─────────────────────────
 def hexagon_r(apothem):
     return lambda th: apothem / np.cos(((th + math.pi / 6) % (math.pi / 3)) - math.pi / 6)
 
 
-def make_base():
-    inner = BASE_TIP_HW - LEG_TIP_W
-    plate = densify([(0, BASE_STEM_HW), (BASE_STEM_L, BASE_STEM_HW), (BASE_L, BASE_TIP_HW),
-                     (BASE_L, inner), (NOTCH_X, 0), (BASE_L, -inner),
-                     (BASE_L, -BASE_TIP_HW), (BASE_STEM_L, -BASE_STEM_HW), (0, -BASE_STEM_HW)])
-    shells = [layered([(0, BASE_T, [plate], [])])]
+def base_outline():
+    """V자 바닥판 윤곽. 다리 안쪽을 CUT_X 부터 바깥 끝 쪽으로 비스듬히 잘라냈다."""
+    tip_in = BASE_TIP_HW - TIP_W
+    cut_y = (CUT_X - NOTCH_X) * (BASE_TIP_HW - 9.0) / (BASE_L - NOTCH_X)  # 원래 안쪽 선 위
+    half = [((0, BASE_STEM_HW), 3.0), ((BASE_STEM_L, BASE_STEM_HW), 8.0),
+            ((BASE_L, BASE_TIP_HW), 1.8), ((BASE_L, tip_in), 1.8), ((CUT_X, cut_y), 40.0)]
+    pts = half + [((NOTCH_X, 0), 1.5)] + [((x, -y), r) for (x, y), r in reversed(half)]
+    return densify(fillet([p for p, _ in pts], [r for _, r in pts]))
 
-    def ear(cx, y_in):
+
+def make_base():
+    outline = base_outline()
+    lighten = stadium(9.0, 3.0, x0=16.0)            # 꼭짓점 쪽 경량 구멍
+    shells = [layered(slab(0, BASE_T, [outline], [lighten], cb=EDGE, ct=0.6))]
+
+    def ear(cx, y_in, y_out):
         prof = densify([(cx - LINK_R, BASE_T - 1.0), (cx + LINK_R, BASE_T - 1.0)] +
                        arc(cx, PIVOT_Z, LINK_R, 0, math.pi))
-        hole = circle(cx, PIVOT_Z, BOLT_HOLE_R)
-        return [place(layered([(a, b, [prof], [hole])]), ROT_Y)
-                for a, b in ((y_in, STACK_HALF), (-STACK_HALF, -y_in))]
+        hole = [circle(cx, PIVOT_Z, BOLT_HOLE_R)]
+        # ROT_Y 로 로컬 w -> -Y. 바깥 면(|Y| = y_out)에만 모따기
+        return [place(layered(slab(y_in, y_out, [prof], hole, ct=EDGE)), ROT_Y),
+                place(layered(slab(-y_out, -y_in, [prof], hole, cb=EDGE)), ROT_Y)]
 
-    shells += ear(A_X, PLATE_IN)
-    shells += ear(D_X, CHEEK_IN)
+    shells += ear(A_X, PLATE_IN, STACK_HALF)
+    shells += ear(D_X, CHEEK_IN, D_HALF)
     return merge(*shells)
 
 
@@ -275,40 +353,42 @@ def link_holes():
 
 
 def make_upper_plate():
-    """위팔(BC) 판. 2장이 한 쌍."""
+    """위팔(BC) 판. 2장이 한 쌍. 가운데에 경량 슬롯."""
     t = STACK_HALF - PLATE_IN
-    return merge(layered([(0, t, [stadium(LINK_LEN, LINK_R)], link_holes())]))
+    slot = stadium(LINK_LEN - 19.0, 1.5, x0=9.5)
+    return merge(layered(slab(0, t, [stadium(LINK_LEN, LINK_R)], link_holes() + [slot],
+                              cb=EDGE, ct=EDGE)))
 
 
 def make_lower_arm():
     """아래팔(AB). 얇은 레일 2장을 허브와 기둥으로 이은 사다리형. 눕혀서 출력."""
-    rail = 3.2
+    rail = 2.4
     full = 2 * CHEEK_OUT
     mid = LINK_LEN / 2
-    hubs = [circle(0, 0, 4.0), circle(LINK_LEN, 0, 4.0),
-            densify([(mid - 2, -4), (mid + 2, -4), (mid + 2, 4), (mid - 2, 4)])]
+    hubs = [circle(0, 0, 3.6), circle(LINK_LEN, 0, 3.6),
+            densify([(mid - 2, -3.5), (mid + 2, -3.5), (mid + 2, 3.5), (mid - 2, 3.5)])]
     bar = stadium(LINK_LEN, LINK_R)
-    return merge(layered([(0, rail, [bar], link_holes()),
-                          (rail, full - rail, hubs, link_holes()),
-                          (full - rail, full, [bar], link_holes())]))
+    return merge(layered(slab(0, rail, [bar], link_holes(), cb=EDGE) +
+                         [(rail, full - rail, hubs, link_holes())] +
+                         slab(full - rail, full, [bar], link_holes(), ct=EDGE)))
 
 
 def make_head():
-    """C 관절에 물리는 포크형 헤드 + 5/8\"-27 수나사. 볼 바닥(u=-5)이 베드에 닿는다."""
-    cheek = densify([(-5, 8), (-5, 5), (-5, -3.5), (-3.5, -5), (3.5, -5),
-                     (5, -3.5), (5, 5), (5, 8)])
-    slab = densify([(-5, 5), (5, 5), (5, 8), (-5, 8)])
-    hole = circle(0, 0, BOLT_HOLE_R)
-    fork = layered([(-CHEEK_OUT, -CHEEK_IN, [cheek], [hole]),
-                    (-CHEEK_IN, CHEEK_IN, [slab], []),
-                    (CHEEK_IN, CHEEK_OUT, [cheek], [hole])])
+    """C 관절에 물리는 포크형 헤드 + 5/8\"-27 수나사. 볼 바닥이 베드에 닿는다."""
+    r = LINK_R
+    cheek = densify([(r, 8), (-r, 8), (-r, 5)] + arc(0, 0, r, math.pi, 2 * math.pi) + [(r, 5)])
+    bridge = densify([(-r, 5), (r, 5), (r, 8), (-r, 8)])
+    hole = [circle(0, 0, BOLT_HOLE_R)]
+    fork = layered(slab(-CHEEK_OUT, -CHEEK_IN, [cheek], hole, cb=EDGE) +
+                   [(-CHEEK_IN, CHEEK_IN, [bridge], [])] +
+                   slab(CHEEK_IN, CHEEK_OUT, [cheek], hole, ct=EDGE))
     top = HEAD_OFF + MIC_LEN
     minor = float(mic_r(np.array([0.0]), MIC_PITCH / 2)[0])
     stud = thread_rows(mic_r, HEAD_OFF, top, MIC_PITCH / 16,
-                       lambda r, z: np.minimum(r, minor - 0.3 + (top - z)))
-    boss = revolve([(0, 7), (4.8, 7), (4.8, 8), (9.0, 12.2),
-                    (9.0, HEAD_OFF - 0.3), (8.7, HEAD_OFF), *stud, (0, top)])
-    return merge(place(fork, ROT_Y, (0, 0, 5)), place(boss, None, (0, 0, 5)))
+                       lambda rr, z: np.minimum(rr, minor - 0.3 + (top - z)))
+    boss = revolve([(0, 7), (4.4, 7), (4.4, 8), (9.0, 12.6),
+                    (9.0, HEAD_OFF - 0.25), (8.75, HEAD_OFF), *stud, (0, top)])
+    return merge(place(fork, ROT_Y, (0, 0, r)), place(boss, None, (0, 0, r)))
 
 
 def make_rod(hand):
@@ -327,7 +407,8 @@ def make_rod(hand):
     screw = revolve([(0, 3.5), *rows, (0, top)])
     a0 = math.asin(3.0 / EYE_R)
     outline = densify([(5.5, -3.0), (5.5, 3.0)] + arc(0, 0, EYE_R, a0, 2 * math.pi - a0))
-    eye = layered([(-EYE_HALF, EYE_HALF, [outline], [circle(0, 0, BOLT_HOLE_R)])])
+    eye = layered(slab(-EYE_HALF, EYE_HALF, [outline], [circle(0, 0, BOLT_HOLE_R)],
+                       cb=0.3, ct=0.3))
     lay = np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0]], float)   # 나사 축 -> X, 평면 -> 수평
     return merge(place(eye, None, (0, 0, EYE_HALF)), place(screw, lay, (0, 0, EYE_HALF)))
 
@@ -351,27 +432,26 @@ def make_frame():
     return merge(revolve(pts, closed_loop=True))
 
 
-KNOB_LEN, KNOB_W = 24.0, 9.0         # 1자 손잡이 길이, 폭 (양 끝 반원)
-KNOB_FLOOR = 1.3                     # 너트 포켓 바닥 두께
-
-
-def knob_lengths():
-    """손잡이 높이와 손잡이 밖으로 나오는 볼트 길이."""
-    total = KNOB_FLOOR + NUT_T
-    return total, BOLT_LEN - 2 * STACK_HALF - total
-
-
 def make_knob():
-    """끝이 둥근 1자 손잡이. 위쪽 포켓에 M3 너트를 눌러 넣는다. 포켓이 위를 보게 출력."""
-    total, _ = knob_lengths()
+    """끝이 둥근 1자 손잡이. 덮개를 베드에 두고 출력, 쓸 때는 포켓이 관절 쪽을 본다."""
     r = KNOB_W / 2
-    outer = densify(arc(KNOB_LEN / 2 - r, 0, r, -math.pi / 2, math.pi / 2) +
-                    arc(-(KNOB_LEN / 2 - r), 0, r, math.pi / 2, 3 * math.pi / 2))
+    outer = stadium(KNOB_LEN - KNOB_W, r, x0=-(KNOB_LEN / 2 - r))
     rc = NUT_AF / 2 / math.cos(math.pi / 6)
     pocket = densify([(rc * math.cos(a), rc * math.sin(a))       # 평평한 면이 손잡이 옆면과 나란함
                       for a in np.arange(6) * math.pi / 3])
-    return merge(layered([(0, KNOB_FLOOR, [outer], [circle(0, 0, BOLT_HOLE_R, 24)]),
-                          (KNOB_FLOOR, total, [outer], [pocket])]))
+    total = KNOB_CAP + KNOB_POCKET
+    return merge(layered(slab(0, KNOB_CAP, [outer], [circle(0, 0, BOLT_HOLE_R, 24)], cb=0.5) +
+                         slab(KNOB_CAP, total, [outer], [pocket], ct=EDGE)))
+
+
+def bolt_check():
+    """관절별 (이름, 적층 폭, 볼트 길이, 너트 밖으로 나온 길이, 손잡이 밖으로 나온 길이)."""
+    out = []
+    for name, stack, bolt in (("A/B/C", 2 * STACK_HALF, BOLT_ARM), ("D", 2 * D_HALF, BOLT_D)):
+        past_nut = bolt - stack - NUT_T
+        past_knob = bolt - stack - (NUT_T - KNOB_POCKET) - KNOB_POCKET - KNOB_CAP
+        out.append((name, stack, bolt, past_nut, past_knob))
+    return out
 
 
 # ───────────────────────── 3MF 출력 ─────────────────────────
@@ -381,7 +461,7 @@ def write_3mf(path, objects, items):
     out = ['<?xml version="1.0" encoding="UTF-8"?>',
            '<model unit="millimeter" xml:lang="ko-KR" '
            'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">',
-           ' <metadata name="Title">Fifine K688 mic stand v3</metadata>',
+           ' <metadata name="Title">Fifine K688 mic stand v4</metadata>',
            ' <resources>']
     for i, name in enumerate(names, 1):
         v, t = objects[name]
@@ -426,7 +506,7 @@ def build():
              ("lower_arm", 182, 104), ("upper_plate", 182, 120), ("upper_plate", 182, 134),
              ("head", 184, 152), ("screw_RH", 200, 148), ("screw_LH", 200, 160),
              ("frame", 232, 152),
-             ("knob", 196, 176), ("knob", 226, 176), ("knob", 196, 190), ("knob", 226, 190)]
+             ("knob", 196, 176), ("knob", 222, 176), ("knob", 196, 190), ("knob", 222, 190)]
     return objects, items
 
 
@@ -474,7 +554,7 @@ def draw_assembly(path):
         return np.array([p + u * a + n * hw, p + u * b + n * hw, p + u * b - n * hw, p + u * a - n * hw])
 
     lo, hi = strut_range()
-    fig, axes = plt.subplots(1, 4, figsize=(17, 4.4), gridspec_kw={"width_ratios": [1, 1, 1, 1]})
+    fig, axes = plt.subplots(1, 4, figsize=(17, 4.4))
     for ax, (name, c) in zip(axes, POSES):
         c = np.array(c); b, ls = pose(c)
         assert lo - 1e-6 <= ls <= hi + 1e-6, (name, ls)
@@ -483,12 +563,13 @@ def draw_assembly(path):
         ax.add_patch(Polygon([[0, 0], [BASE_L, 0], [BASE_L, BASE_T], [0, BASE_T]], fc="0.75", ec="k", lw=0.6))
         for px in (A_X, D_X):
             ax.add_patch(Polygon(capsule((px, BASE_T), (px, PIVOT_Z), LINK_R), fc="0.75", ec="k", lw=0.6))
+            ax.add_patch(Circle((px, PIVOT_Z), KNOB_LEN / 2, fill=False, ls="--", ec="0.5", lw=0.6))
         ax.add_patch(Polygon(box(D, u, 0, ls, 3.3), fc="tab:blue", ec="k", lw=0.5))
         off = (ls - FRAME_LEN) / 2
         ax.add_patch(Polygon(box(D, u, off, off + FRAME_LEN, FRAME_R), fc="tab:purple", ec="k", lw=0.5, alpha=0.75))
         ax.add_patch(Polygon(capsule(A, b, LINK_R), fc="0.2", ec="k", lw=0.6))
         ax.add_patch(Polygon(capsule(b, c, LINK_R), fc="0.5", ec="k", lw=0.6))
-        ax.add_patch(Polygon(box(c, up, -5, 8, 5), fc="tab:green", ec="k", lw=0.5))
+        ax.add_patch(Polygon(box(c, up, -LINK_R, 8, LINK_R), fc="tab:green", ec="k", lw=0.5))
         ax.add_patch(Polygon(box(c, up, 8, HEAD_OFF, 9), fc="tab:green", ec="k", lw=0.5))
         ax.add_patch(Polygon(box(c, up, HEAD_OFF, HEAD_OFF + MIC_LEN, MIC_MAJOR_R), fc="tab:orange", ec="k", lw=0.5))
         for p in (A, b, c, D):
@@ -497,15 +578,14 @@ def draw_assembly(path):
         ax.set_title(f"{name}: strut {ls:.1f} mm -> joint {c[1] + HEAD_OFF:.0f} mm", fontsize=10)
         ax.set_aspect("equal"); ax.grid(alpha=0.3); ax.set_xlim(-8, BASE_L + 6); ax.set_ylim(0, 84)
     ax = axes[3]
-    inner = BASE_TIP_HW - LEG_TIP_W
-    plate = [(0, BASE_STEM_HW), (BASE_STEM_L, BASE_STEM_HW), (BASE_L, BASE_TIP_HW), (BASE_L, inner),
-             (NOTCH_X, 0), (BASE_L, -inner), (BASE_L, -BASE_TIP_HW), (BASE_STEM_L, -BASE_STEM_HW),
-             (0, -BASE_STEM_HW)]
-    ax.add_patch(Polygon([(y, x) for x, y in plate], fc="0.75", ec="k", lw=0.8))
-    for px, yin in ((A_X, PLATE_IN), (D_X, CHEEK_IN)):
+    ol = base_outline()
+    ax.add_patch(Polygon(ol[:, ::-1], fc="0.75", ec="k", lw=0.8))
+    ax.add_patch(Polygon(stadium(9.0, 3.0, x0=16.0)[:, ::-1], fc="white", ec="k", lw=0.6))
+    for px, yin, yout in ((A_X, PLATE_IN, STACK_HALF), (D_X, CHEEK_IN, D_HALF)):
         for s in (1, -1):
-            ax.add_patch(Polygon([(s * yin, px - 5), (s * STACK_HALF, px - 5), (s * STACK_HALF, px + 5),
-                                  (s * yin, px + 5)], fc="0.45", ec="k", lw=0.5))
+            ax.add_patch(Polygon([(s * yin, px - LINK_R), (s * yout, px - LINK_R),
+                                  (s * yout, px + LINK_R), (s * yin, px + LINK_R)],
+                                 fc="0.45", ec="k", lw=0.5))
     ax.set_title("base, top view (apex up)", fontsize=10)
     ax.set_aspect("equal"); ax.grid(alpha=0.3); ax.set_xlim(-45, 45); ax.set_ylim(BASE_L + 6, -8)
     fig.tight_layout(); fig.savefig(path, dpi=100)
@@ -519,7 +599,7 @@ def draw_preview(path):
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
     global N_THETA, SEG, TH_STEP
     saved = N_THETA, SEG, TH_STEP
-    N_THETA, SEG, TH_STEP = 48, 3.0, 2.0
+    N_THETA, SEG, TH_STEP = 48, 2.0, 2.0
     objects, items = build()
     N_THETA, SEG, TH_STEP = saved
     fig = plt.figure(figsize=(13, 8))
@@ -542,20 +622,28 @@ def draw_preview(path):
 def main():
     here = Path(__file__).resolve().parent
     objects, items = build()
+    total = 0.0
     for name, (v, t) in objects.items():
         size = v.max(0) - v.min(0)
+        count = sum(n == name for n, _, _ in items)
+        vol = signed_volume(v, t) / 1000
+        total += vol * count
         assert abs(v[:, 2].min()) < 1e-6, f"{name} does not sit on z=0"
-        print(f"{name:12s} x{sum(n == name for n, _, _ in items)} tris={len(t):6d} "
-              f"size={size.round(1)} vol={signed_volume(v, t) / 1000:.2f}cm3")
+        print(f"{name:12s} x{count} tris={len(t):6d} size={size.round(1)} vol={vol:.2f}cm3")
+    print(f"total volume {total:.1f} cm3")
     for name, x, y in items:
         v = objects[name][0]
         lo, hi = v.min(0)[:2] + (x, y), v.max(0)[:2] + (x, y)
         assert lo.min() >= 0 and hi.max() <= 256, f"{name} is off the 256 mm plate"
+    for name, stack, bolt, past_nut, past_knob in bolt_check():
+        print(f"joint {name:5s} stack {stack:.1f} M3x{bolt:.0f}: "
+              f"past nut {past_nut:+.1f}, past knob {past_knob:+.1f}")
+        assert past_nut >= 0, f"M3x{bolt} does not reach through the nut at {name}"
+        assert past_knob <= 0, f"M3x{bolt} sticks out of the knob at {name}"
+    assert PIVOT_Z - KNOB_LEN / 2 > BASE_T + 0.5, "knob hits the base plate"
     write_3mf(here / "k688_mic_stand.3mf", objects, items)
     lo, hi = strut_range()
-    total, stick = knob_lengths()
-    print(f"strut length {lo:.1f}..{hi:.1f} mm, knob height {total:.1f} mm, "
-          f"bolt sticks out {stick:.1f} mm")
+    print(f"strut length {lo:.1f}..{hi:.1f} mm")
     for name, c in POSES:
         b, ls = pose(c)
         print(f"  {name:4s} C={c} B=({b[0]:.0f},{b[1]:.0f}) strut {ls:.1f} "
