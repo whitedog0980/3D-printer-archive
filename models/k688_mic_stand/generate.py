@@ -67,6 +67,8 @@ BASE_L = 96.0
 BASE_STEM_HW, BASE_STEM_L = STACK_HALF + 1.0, 30.0
 BASE_TIP_HW = 27.0       # 다리 끝 바깥 반폭 (받침 폭 54)
 TIP_W = 4.5              # 잘라낸 다리 끝 폭
+WING_LEN = 20.0          # 꼭짓점 쪽 좌우 날개 길이 (옆으로 넘어짐 방지)
+WING_ROOT, WING_TIP = 14.0, 4.0      # 날개 뿌리 폭, 끝 폭
 CUT_X = 56.0             # 다리 안쪽을 잘라내기 시작하는 위치
 NOTCH_X = 32.5           # V 안쪽 꼭짓점
 PIVOT_Z = 13.0           # 손잡이가 바닥판에 닿지 않고 한 바퀴 돌 수 있는 높이
@@ -362,7 +364,9 @@ def base_outline():
     """V자 바닥판 윤곽. 다리 안쪽을 CUT_X 부터 바깥 끝 쪽으로 비스듬히 잘라냈다."""
     tip_in = BASE_TIP_HW - TIP_W
     cut_y = (CUT_X - NOTCH_X) * (BASE_TIP_HW - 9.0) / (BASE_L - NOTCH_X)  # 원래 안쪽 선 위
-    half = [((0, BASE_STEM_HW), 3.0), ((BASE_STEM_L, BASE_STEM_HW), 8.0),
+    wing_y = BASE_STEM_HW + WING_LEN
+    half = [((0, wing_y), 1.5), ((WING_TIP, wing_y), 1.5), ((WING_ROOT, BASE_STEM_HW), 3.0),
+            ((BASE_STEM_L, BASE_STEM_HW), 8.0),
             ((BASE_L, BASE_TIP_HW), 1.8), ((BASE_L, tip_in), 1.8), ((CUT_X, cut_y), 40.0)]
     pts = half + [((NOTCH_X, 0), 1.5)] + [((x, -y), r) for (x, y), r in reversed(half)]
     return densify(fillet([p for p, _ in pts], [r for _, r in pts]))
