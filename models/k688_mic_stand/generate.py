@@ -81,19 +81,21 @@ CORNER = 1.5             # 육각 모서리 반지름
 FLANGE_APO = 8.6         # 헤드 육각 플랜지 맞변 반거리
 HEAD_OFF = 13.0          # C 축 -> 마이크 어깨면
 
-# 차음 원통 v2: 마이크 헤드(Ø40)에 끼우는 원통. 위쪽 바깥에 집음 파츠용 수나사
-# (총열 끝 나사에 소음기를 돌려 끼우는 방식)
+# 차음 원통 v3: 마이크 헤드(Ø40)에 끼우는 원통. 위쪽은 벽을 깎아 만든 수나사
+# (총열 끝 나사에 소음기를 돌려 끼우는 방식). 집음 파츠를 끼우면 바깥면이 하나로 이어진다
 MIC_HEAD_D = 40.0
-SLEEVE_CLEAR = 0.9       # 지름 방향 여유. v1 0.4 는 너무 빡빡해서 0.5 키움 -> 안지름 40.9
-WALL5 = 0.42 + 4 * 0.45  # 0.4 노즐 벽 5줄 (바깥 0.42 + 안쪽 0.45 x4) = 2.22
-SLEEVE_H = 70.0          # 길이
+SLEEVE_CLEAR = 0.9       # 지름 방향 여유 -> 안지름 40.9
+WALL7 = 0.42 + 6 * 0.45  # 0.4 노즐 벽 7줄 (바깥 0.42 + 안쪽 0.45 x6) = 3.12
+SLEEVE_H = 70.0          # 길이 (수나사 구간 포함)
 SLEEVE_LEAD = 0.5        # 마이크를 넣는 쪽(아래) 안쪽 모따기
-# 집음 파츠 나사: 자체 규격. 피치 3, 산 높이 1.0, 플랭크 45도(서포트 없이 세워 출력)
-ST_PITCH, ST_CREST, ST_DEPTH = 3.0, 0.5, 1.0
-ST_LEN = 11.5            # 원통 수나사 길이
-ST_TOP_GAP = 1.5         # 원통 끝과 수나사 사이 민무늬 구간
+# 집음 파츠 나사: 자체 규격. 피치 2.4, 산 높이 0.8, 플랭크 45도. 벽 두께 안에서 깎는다
+ST_PITCH, ST_CREST, ST_DEPTH = 2.4, 0.4, 0.8
+ST_ZONE = 14.0           # 원통 위쪽 깎아낸 구간 길이 (턱 ~ 끝)
+ST_LEN = 12.5            # 그중 수나사 길이
 ST_CLEAR = 0.35          # 암나사 반경 공차
+ST_MALE_WALL = 1.07      # 수나사 골 안쪽에 남는 벽
 FUNNEL_THREAD_LEN = 13.0 # 집음 파츠 암나사 구간 길이
+
 
 
 # 손잡이: 끝이 둥근 1자, 너트 포켓이 관절 쪽을 향함
@@ -505,46 +507,48 @@ def make_knob():
 
 
 def sleeve_radii():
+    """(안쪽, 바깥, 수나사 골, 수나사 산) 반지름."""
     ri = (MIC_HEAD_D + SLEEVE_CLEAR) / 2      # 20.45
-    ro = ri + WALL5                            # 22.67 = 수나사 골
-    return ri, ro, ro + ST_DEPTH               # 수나사 산 23.67
+    minor = ri + ST_MALE_WALL                  # 21.52
+    return ri, ri + WALL7, minor, minor + ST_DEPTH
 
 
 def st_male(theta, z):
-    _, ro, major = sleeve_radii()
-    return thread_r(theta, z, major, ST_PITCH, ST_CREST, ST_DEPTH, 45)
+    """수나사 반지름. z 는 턱에서 잰 높이 = 끝까지 끼운 집음 파츠의 높이 좌표."""
+    return thread_r(theta, z, sleeve_radii()[3], ST_PITCH, ST_CREST, ST_DEPTH, 45)
 
 
 def make_mic_sleeve():
-    """차음 원통 v2. 벽 5줄, 아래로 마이크를 넣고 위쪽 바깥에 수나사."""
-    ri, ro, _ = sleeve_radii()
+    """차음 원통 v3. 벽 7줄, 아래로 마이크를 넣고 위쪽은 벽을 깎은 수나사."""
+    ri, ro, minor, _ = sleeve_radii()
     h = SLEEVE_H
-    z1 = h - ST_TOP_GAP
-    z0 = z1 - ST_LEN
-    rows = thread_rows(st_male, z0, z1, ST_PITCH / 24,
-                       lambda r, z: np.maximum(ro, np.minimum(r, np.minimum(ro + (z - z0), ro + (z1 - z)))))
-    pts = [(ri + SLEEVE_LEAD, 0), (ro - 0.4, 0), (ro, 0.4), *rows,
-           (ro, h - 0.4), (ro - 0.4, h), (ri + 0.3, h), (ri, h - 0.3), (ri, SLEEVE_LEAD)]
+    zs = h - ST_ZONE                           # 턱 높이
+    rows = thread_rows(lambda th, z: st_male(th, z - zs), zs, zs + ST_LEN, ST_PITCH / 24,
+                       lambda r, z: np.maximum(minor, np.minimum(
+                           r, np.minimum(minor + (z - zs), minor + (zs + ST_LEN - z)))))
+    pts = [(ri + SLEEVE_LEAD, 0), (ro - 0.4, 0), (ro, 0.4), (ro, zs), *rows,
+           (minor, h - 0.4), (minor - 0.4, h), (ri + 0.3, h), (ri, h - 0.3), (ri, SLEEVE_LEAD)]
     return merge(revolve(pts, closed_loop=True))
 
 
 def funnel_radii():
-    _, _, major = sleeve_radii()
-    f_major = major + ST_CLEAR                 # 암나사 골 24.02
-    r_end = (MIC_HEAD_D + SLEEVE_CLEAR) / 4    # 원통 안지름의 절반 지름 -> 반지름 10.225
-    return f_major, f_major + WALL5, r_end
+    """(암나사 골, 바깥, 끝 구멍) 반지름. 바깥은 원통 바깥과 같다."""
+    ri, ro, _, major = sleeve_radii()
+    return major + ST_CLEAR, ro, ri / 2
 
 
 def make_mic_funnel():
-    """집음 파츠. 아래는 암나사 원통, 위는 안지름이 45도로 원통 안지름의 절반까지 줄어드는
-    윗부분이 잘린 원뿔. 수평 벽 두께는 5줄(2.22). 암나사가 베드에 닿게 출력."""
+    """집음 파츠. 아래는 암나사 원통(바깥이 원통과 같은 지름), 위는 안지름이 45도로
+    원통 안지름의 절반까지 줄어드는 윗부분이 잘린 원뿔. 암나사가 베드에 닿게 출력."""
+    ri, _, minor, _ = sleeve_radii()
     f_major, ro, r_end = funnel_radii()
     zt = FUNNEL_THREAD_LEN
-    z_top = zt + (f_major - r_end)             # 45도
-    r_ent = f_major + 0.4
+    z_top = zt + (f_major - r_end)             # 안쪽 45도
+    z_cone = zt + (f_major - ri)               # 여기부터 수평 벽 두께가 7줄이 되어 바깥도 45도
+    r_ent = minor + ST_CLEAR + 0.5
     female = thread_rows(lambda th, z: st_male(th, z) + ST_CLEAR, zt, 0.0, ST_PITCH / 24,
                          lambda r, z: np.maximum(r, r_ent - z))       # 입구 모따기
-    pts = [(ro - 0.4, 0), (ro, 0.4), (ro, zt), (r_end + WALL5, z_top),
+    pts = [(ro - 0.2, 0), (ro, 0.2), (ro, z_cone), (r_end + WALL7, z_top),
            (r_end, z_top), (f_major, zt), *female]
     return merge(revolve(pts, closed_loop=True))
 
