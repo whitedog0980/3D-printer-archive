@@ -121,6 +121,25 @@
 * **암나사 쪽을 베드에 두고** 출력한다. 45° 경사는 서포트 없이 출력된다.
 * v2(벽 5줄, 나사가 원통 바깥으로 돌출)는 결합부가 튀어나와 폐기했다.
 
+### 흡음 후드 (`hood_shell` + `hood_liner`)
+![흡음 후드 단면](/models/k688_mic_stand/hood.png)
+* 차음 원통 측정(2026-11-15)에서 딱딱한 원통 안이 울려 0.8~1.3 kHz가 6~9 dB 커지는 것이 확인되어, 안쪽에 흡음층을 넣은 후드로 다시 설계했다.
+* 조건: 마이크에 장착, 크기는 마이크의 120% 이하, 모니터를 가리지 않을 것.
+  * 바깥지름 **66 mm = 몸통 Ø55의 120%**. 마이크와 같은 축이라 위로 솟지 않는다.
+  * 길이 방향으로는 헤드 끝보다 25 mm 앞으로 나간다 (마이크 전체 길이 +13%).
+* 구조
+  * 껍데기(`hood_shell`): 벽 5줄(2.22 mm). 뒤쪽 15 mm가 몸통에 끼워진다. 지름 여유 0.8 mm라 몸통에 펠트 테이프를 한 바퀴 감아 맞춘다.
+  * 흡음층(`hood_liner`): 두께 6 mm 관. **벽·윗면·바닥면 0, 내부 채움 gyroid 20%** 로 출력해 구멍이 숭숭 뚫린 다공성 층으로 만든다. 펠트나 흡음 스펀지(6 mm)로 대신해도 된다.
+  * 앞쪽 2 mm 턱이 흡음층을 붙잡는다(앞 구멍 Ø51). 흡음층은 껍데기 뒤쪽으로 밀어 넣는다.
+  * 헤드와 흡음층 사이 공기층 4.7 mm.
+* 동작: 뒤쪽은 몸통이 막고, 소리는 앞 구멍으로만 들어온다. 옆에서 오는 소리는 앞 구멍으로 돌아 들어가며 흡음층에 깎인다. 흡음층이 통 안의 울림도 줄인다.
+* 한계
+  * 1 kHz 아래 저음은 후드를 쉽게 돌아 들어와 효과가 작다.
+  * 헤드 옆면이 후드 안에 들어가므로 마이크 자체의 카디오이드 지향성은 약해진다. 실제 이득은 측정으로 확인한다.
+  * 무게: 껍데기 약 68 g + 흡음층 약 20 g. 스탠드 설계 하중(600 g) 안이지만 여유가 줄어든다.
+* **확인 필요한 치수**: 헤드 길이(몸통 앞면 ~ 헤드 끝, 현재 60 mm 가정), 몸통 앞쪽 지름(55 mm). 다르면 `hood.py`의 `HEAD_LEN`, `BODY_D`를 고치고 다시 생성한다.
+* 출력: 두 파츠 모두 받은 방향 그대로(앞면이 베드). 껍데기 벽 5개, 흡음층은 위 설정. 서포트 불필요.
+
 ### 바닥판
 * 외곽 96 × 59.2 mm, 두께 3 mm. v2 대비 외곽 사각형 면적 27%, 판 면적 약 20%이다.
 * 꼭짓점 쪽 좌우에 길이 20 mm 날개(뿌리 폭 14, 끝 폭 4 mm)를 붙였다. 뒤쪽 받침 폭이 19 → 59 mm로 넓어져 옆으로 넘어지는 각도가 약 7° → 약 10°로 늘었다. 대신 외곽 면적이 25% 목표를 조금 넘는다.
@@ -164,6 +183,7 @@
 | [`stl/mic_sleeve.stl`](/models/k688_mic_stand/stl/mic_sleeve.stl), [`stl/mic_funnel.stl`](/models/k688_mic_stand/stl/mic_funnel.stl) | 차음 원통·집음 파츠 단독 STL. 출력 설정을 직접 할 때 사용 (출력 방향 그대로 배치됨) |
 | [`stl/mic_sleeve_fit_test.stl`](/models/k688_mic_stand/stl/mic_sleeve_fit_test.stl) | 원통 아래쪽 10 mm 시험 링. 마이크에 맞는지 먼저 확인용 |
 | [`sleeve_figure.py`](/models/k688_mic_stand/sleeve_figure.py) | 원통·집음 파츠 조립 단면도(`sleeve_funnel.png`) 생성 |
+| [`hood.py`](/models/k688_mic_stand/hood.py), [`stl/hood_shell.stl`](/models/k688_mic_stand/stl/hood_shell.stl), [`stl/hood_liner.stl`](/models/k688_mic_stand/stl/hood_liner.stl) | 흡음 후드 생성 스크립트와 STL, 단면도(`hood.png`) |
 | [`generate.py`](/models/k688_mic_stand/generate.py) | 파라메트릭 형상 생성 스크립트 (numpy, scipy, matplotlib) |
 | [`bambu_project.py`](/models/k688_mic_stand/bambu_project.py) | Bambu Studio 프로젝트 형식(설정 포함)으로 3MF를 쓰는 모듈. 출력 설정은 여기서 고친다 |
 | [`bambu/a1_project_template.config`](/models/k688_mic_stand/bambu/a1_project_template.config) | 설정의 틀. Bambu Studio 저장소에 들어 있는 A1 프로젝트 파일의 전체 설정 |
