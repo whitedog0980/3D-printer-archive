@@ -88,6 +88,9 @@ SLEEVE_CLEAR = 2.0       # 지름 방향 여유 -> 안지름 42.0 (40.4, 40.9 �
 WALL7 = 0.42 + 6 * 0.45  # 0.4 노즐 벽 7줄 = 3.12 (집음 파츠 원뿔 벽)
 WALL3 = 0.42 + 2 * 0.45  # 이중벽 한 겹 = 벽 3줄 1.32
 SLEEVE_GAP = 0.5         # 두 겹 사이 빈 공간 (1줄)
+# 나사 구간과 집음 파츠의 기준 치수. v3(안지름 40.9, 벽 7줄)에서 고정 -> 이미 출력한 집음 파츠가 그대로 맞는다
+THREAD_REF_RI = 20.45    # v3 원통 안쪽 반지름
+THREAD_REF_RO = THREAD_REF_RI + WALL7    # v3 원통·집음 파츠 바깥 반지름 23.57
 SLEEVE_H = 70.0          # 길이 (수나사 구간 포함)
 SLEEVE_LEAD = 0.5        # 마이크를 넣는 쪽(아래) 안쪽 모따기
 # 집음 파츠 나사: 자체 규격. 피치 2.4, 산 높이 0.8, 플랭크 45도. 벽 두께 안에서 깎는다
@@ -511,7 +514,7 @@ def make_knob():
 def sleeve_radii():
     """(안쪽, 바깥, 수나사 골, 수나사 산) 반지름."""
     ri = (MIC_HEAD_D + SLEEVE_CLEAR) / 2      # 21.0
-    minor = ri + ST_MALE_WALL                  # 22.07
+    minor = THREAD_REF_RI + ST_MALE_WALL       # 21.52 (v3와 같음)
     return ri, ri + 2 * WALL3 + SLEEVE_GAP, minor, minor + ST_DEPTH
 
 
@@ -544,8 +547,9 @@ def make_mic_sleeve():
     rows = thread_rows(lambda th, z: st_male(th, z - zs), zs, zs + ST_LEN, ST_PITCH / 24,
                        lambda r, z: np.maximum(minor, np.minimum(
                            r, np.minimum(minor + (z - zs), minor + (zs + ST_LEN - z)))))
-    pts = [(ri + SLEEVE_LEAD, 0), (ro - 0.4, 0), (ro, 0.4), (ro, zs), *rows,
-           (minor, h - 0.4), (minor - 0.4, h), (ri + 0.3, h), (ri, h - 0.3), (ri, SLEEVE_LEAD)]
+    step = ro - THREAD_REF_RO                  # 몸통이 집음 파츠보다 굵은 만큼 45도로 줄여 턱에 붙인다
+    pts = [(ri + SLEEVE_LEAD, 0), (ro - 0.4, 0), (ro, 0.4), (ro, zs - step), (THREAD_REF_RO, zs), *rows,
+           (minor, h - 0.3), (minor - 0.2, h), (ri + 0.2, h), (ri, h - 0.2), (ri, SLEEVE_LEAD)]
     return with_void(merge(revolve(pts, closed_loop=True)), sleeve_void(1.0, zs - 1.5))
 
 
@@ -557,15 +561,15 @@ def make_sleeve_fit_ring(h=10.0):
 
 
 def funnel_radii():
-    """(암나사 골, 바깥, 끝 구멍) 반지름. 바깥은 원통 바깥과 같다."""
-    ri, ro, _, major = sleeve_radii()
-    return major + ST_CLEAR, ro, ri / 2
+    """(암나사 골, 바깥, 끝 구멍) 반지름. v3 치수 그대로."""
+    major = sleeve_radii()[3]
+    return major + ST_CLEAR, THREAD_REF_RO, THREAD_REF_RI / 2
 
 
 def make_mic_funnel():
     """집음 파츠. 아래는 암나사 원통(바깥이 원통과 같은 지름), 위는 안지름이 45도로
     원통 안지름의 절반까지 줄어드는 윗부분이 잘린 원뿔. 암나사가 베드에 닿게 출력."""
-    ri, _, minor, _ = sleeve_radii()
+    ri, minor = THREAD_REF_RI, sleeve_radii()[2]
     f_major, ro, r_end = funnel_radii()
     zt = FUNNEL_THREAD_LEN
     z_top = zt + (f_major - r_end)             # 안쪽 45도

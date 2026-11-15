@@ -22,14 +22,15 @@ def main():
     zs = h - g.ST_ZONE
     zt = g.FUNNEL_THREAD_LEN
     ztop = zt + fM - rend
-    zc = zt + fM - ri
+    zc = zt + fM - g.THREAD_REF_RI
+    step = ro - g.THREAD_REF_RO
 
     def male(t, z):
         if z <= g.ST_LEN:
             return np.maximum(minor, np.minimum(g.st_male(t, z), np.minimum(minor + z, minor + g.ST_LEN - z)))
-        if z <= g.ST_ZONE - 0.4:
+        if z <= g.ST_ZONE - 0.3:
             return np.full_like(t, minor)
-        return np.full_like(t, minor - (z - (g.ST_ZONE - 0.4)))
+        return np.full_like(t, minor - 0.2 * (z - (g.ST_ZONE - 0.3)) / 0.3)
 
     def female(t, z):
         return np.maximum(g.st_male(t, z) + g.ST_CLEAR, minor + g.ST_CLEAR + 0.5 - z)
@@ -38,9 +39,9 @@ def main():
     ax = fig.add_axes([0.03, 0.05, 0.45, 0.88])
     for side, t0 in ((1, 0.0), (-1, math.pi)):
         t = np.array([t0])
-        so = ([(ri + g.SLEEVE_LEAD, 0), (ro - 0.4, 0), (ro, 0.4), (ro, zs)] +
+        so = ([(ri + g.SLEEVE_LEAD, 0), (ro - 0.4, 0), (ro, 0.4), (ro, zs - step), (g.THREAD_REF_RO, zs)] +
               [(float(male(t, z)[0]), zs + z) for z in np.linspace(0, g.ST_ZONE, 1400)] +
-              [(ri + 0.3, h), (ri, h - 0.3), (ri, g.SLEEVE_LEAD)])
+              [(ri + 0.2, h), (ri, h - 0.2), (ri, g.SLEEVE_LEAD)])
         so = np.array(so)
         ax.add_patch(Polygon(np.c_[side * so[:, 0], so[:, 1]], fc="#5b8fd9", ec="k", lw=0.4))
         a = ri + g.WALL3
@@ -55,12 +56,12 @@ def main():
     ax.annotate("", xy=(-ri, 20), xytext=(ri, 20), arrowprops=dict(arrowstyle="<->"))
     ax.text(0, 21.5, f"안지름 {2 * ri:.1f}", ha="center", fontsize=11)
     ax.annotate("", xy=(-rend, zs + ztop + 3), xytext=(rend, zs + ztop + 3), arrowprops=dict(arrowstyle="<->"))
-    ax.text(0, zs + ztop + 4.5, f"끝 구멍 {2 * rend:.1f} (절반)", ha="center", fontsize=11)
+    ax.text(0, zs + ztop + 4.5, f"끝 구멍 {2 * rend:.2f}", ha="center", fontsize=11)
     ax.annotate("", xy=(-ro, -16), xytext=(ro, -16), arrowprops=dict(arrowstyle="<->"))
-    ax.text(0, -19.5, f"바깥지름 {2 * ro:.2f} (두 파츠 동일)", ha="center", fontsize=11)
+    ax.text(0, -19.5, f"원통 바깥지름 {2 * ro:.2f} / 집음 파츠 {2 * fro:.2f}", ha="center", fontsize=11)
     ax.text(28, 42, "차음 원통\nmic_sleeve\n벽 3줄 + 빈 공간 + 벽 3줄", fontsize=11, color="#2b5ea8")
     ax.text(28, zs + 10, "집음 파츠\nmic_funnel\n벽 7줄", fontsize=11, color="#b55a0f")
-    ax.text(-28, zs + 5, "벽을 깎은 나사\n(피치 2.4, 45°)\n꽉 찬 벽", fontsize=10, ha="right")
+    ax.text(-28, zs + 5, "벽을 깎은 나사\n(v3와 같은 치수)\n꽉 찬 벽", fontsize=10, ha="right")
     ax.set_xlim(-55, 55); ax.set_ylim(-22, zs + ztop + 9); ax.set_aspect("equal"); ax.set_axis_off()
     ax.set_title("조립 단면 (끝까지 돌려 끼운 상태)", fontsize=14)
 
