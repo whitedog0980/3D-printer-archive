@@ -512,13 +512,26 @@ def bolt_check():
 
 
 # ───────────────────────── 3MF 출력 ─────────────────────────
+PLATE_SIZE = 256.0
+PLATE_STRIDE = PLATE_SIZE * 1.2     # Bambu Studio 가 플레이트를 X 방향으로 늘어놓는 간격
+
+
+def item_plate(item):
+    return item[3] if len(item) > 3 else 1
+
+
 def bambu_items(items):
-    """[(형상, x, y)] -> [(오브젝트 이름, 형상, x, y)]. 같은 형상이 여러 개면 _1, _2 를 붙인다."""
-    count = {n: sum(m == n for m, _, _ in items) for n, _, _ in items}
+    """[(형상, x, y[, 플레이트])] -> [(오브젝트 이름, 형상, 월드 x, y, 플레이트)].
+    같은 형상이 여러 개면 _1, _2 를 붙인다. 2번 플레이트는 X 로 PLATE_STRIDE 만큼 옮긴다."""
+    count = {}
+    for it in items:
+        count[it[0]] = count.get(it[0], 0) + 1
     seen, out = {}, []
-    for name, x, y in items:
+    for it in items:
+        name, x, y, plate = it[0], it[1], it[2], item_plate(it)
         seen[name] = seen.get(name, 0) + 1
-        out.append((f"{name}_{seen[name]}" if count[name] > 1 else name, name, x, y))
+        obj = f"{name}_{seen[name]}" if count[name] > 1 else name
+        out.append((obj, name, x + (plate - 1) * PLATE_STRIDE, y, plate))
     return out
 
 
@@ -540,7 +553,8 @@ def build():
              ("head", 215, 90), ("frame", 215, 130),
              ("screw_RH", 140, 145), ("screw_LH", 175, 145),
              ("knob", 30, 170), ("knob", 55, 170), ("knob", 80, 170), ("knob", 105, 170),
-             ("mic_sleeve", 60, 220)]
+             # 차음 원통은 2번 플레이트 가운데에 따로 출력 (실패해도 스탠드 부품에 영향 없음)
+             ("mic_sleeve", 128, 128, 2)]
     return objects, items
 
 
@@ -654,7 +668,10 @@ def draw_preview(path):
     fig = plt.figure(figsize=(13, 8))
     ax = fig.add_subplot(projection="3d")
     light = np.array([0.4, -0.5, 0.75]); light /= np.linalg.norm(light)
-    for name, x, y in items:
+    for it in items:
+        if item_plate(it) != 1:
+            continue
+        name, x, y = it[:3]
         v, t = objects[name]
         tri = v[t] + np.array([x, y, 0])
         nrm = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
@@ -674,16 +691,17 @@ def main():
     total = 0.0
     for name, (v, t) in objects.items():
         size = v.max(0) - v.min(0)
-        count = sum(n == name for n, _, _ in items)
+        count = sum(it[0] == name for it in items)
         vol = signed_volume(v, t) / 1000
         total += vol * count
         assert abs(v[:, 2].min()) < 1e-6, f"{name} does not sit on z=0"
         print(f"{name:12s} x{count} tris={len(t):6d} size={size.round(1)} vol={vol:.2f}cm3")
     print(f"total volume {total:.1f} cm3")
-    for name, x, y in items:
+    for it in items:
+        name, x, y = it[:3]
         v = objects[name][0]
         lo, hi = v.min(0)[:2] + (x, y), v.max(0)[:2] + (x, y)
-        assert lo.min() >= 0 and hi.max() <= 256, f"{name} is off the 256 mm plate"
+        assert lo.min() >= 0 and hi.max() <= PLATE_SIZE, f"{name} is off the 256 mm plate"
     for name, stack, bolt, past_nut, past_knob in bolt_check():
         print(f"joint {name:5s} stack {stack:.1f} M3x{bolt:.0f}: "
               f"past nut {past_nut:+.1f}, past knob {past_knob:+.1f}")

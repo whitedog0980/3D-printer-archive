@@ -71,8 +71,11 @@ OBJECT_SETTINGS = {
     "screw_LH": FINE,
     "frame": FINE,
     "knob": {"sparse_infill_density": "100%"},
-    # 차음 원통: 벽 2줄로만 출력
-    "mic_sleeve": {"wall_loops": "2", "sparse_infill_density": "0%"},
+    # 차음 원통: 벽 2줄로만 출력. 높이 70 / 접지 면적이 작아 A1(베드가 움직임)에서 넘어지기 쉬우므로
+    # 안팎 브림으로 붙이고 벽을 천천히 출력한다
+    "mic_sleeve": {"wall_loops": "2", "sparse_infill_density": "0%",
+                   "brim_type": "outer_and_inner", "brim_width": "6", "brim_object_gap": "0",
+                   "outer_wall_speed": "60", "inner_wall_speed": "60"},
 }
 
 FILAMENT = "Bambu PLA Basic @BBL A1"
@@ -127,7 +130,7 @@ NS = ('xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" '
 
 
 def write(path, meshes, items, title):
-    """meshes: {형상 이름: (verts, tris)}, items: [(오브젝트 이름, 형상 이름, x, y)]"""
+    """meshes: {형상 이름: (verts, tris)}, items: [(오브젝트 이름, 형상 이름, 월드 x, y, 플레이트)]"""
     shape_ids = {name: i + 1 for i, name in enumerate(meshes)}
     first_obj = len(meshes) + 1
 
@@ -149,9 +152,8 @@ def write(path, meshes, items, title):
             f' <metadata name="Title">{title}</metadata>', ' <resources>']
     build = []
     cfg = ['<?xml version="1.0" encoding="UTF-8"?>', '<config>']
-    plate = ['  <plate>', '    <metadata key="plater_id" value="1"/>',
-             '    <metadata key="plater_name" value=""/>', '    <metadata key="locked" value="false"/>']
-    for k, (obj_name, shape, x, y) in enumerate(items):
+    plates = {}
+    for k, (obj_name, shape, x, y, plate_no) in enumerate(items):
         oid = first_obj + k
         sid = shape_ids[shape]
         main.append(f'  <object id="{oid}" p:UUID="{k + 1:08x}-61cb-4c03-9d28-80fed5dfa1dc" type="model">')
@@ -169,11 +171,16 @@ def write(path, meshes, items, title):
         cfg.append(f'      <metadata key="name" value="{obj_name}"/>')
         cfg.append('      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>')
         cfg.append('    </part>\n  </object>')
-        plate += ['    <model_instance>', f'      <metadata key="object_id" value="{oid}"/>',
-                  '      <metadata key="instance_id" value="0"/>',
-                  f'      <metadata key="identify_id" value="{100 + k}"/>', '    </model_instance>']
+        plates.setdefault(plate_no, []).extend(
+            ['    <model_instance>', f'      <metadata key="object_id" value="{oid}"/>',
+             '      <metadata key="instance_id" value="0"/>',
+             f'      <metadata key="identify_id" value="{100 + k}"/>', '    </model_instance>'])
     main += [' </resources>', ' <build p:UUID="2c7c17d8-22b5-4d84-8835-1976022ea369">', *build, ' </build>', '</model>']
-    cfg += plate + ['  </plate>', '</config>']
+    for no in sorted(plates):
+        cfg += ['  <plate>', f'    <metadata key="plater_id" value="{no}"/>',
+                '    <metadata key="plater_name" value=""/>', '    <metadata key="locked" value="false"/>',
+                *plates[no], '  </plate>']
+    cfg.append('</config>')
 
     rel = ('<?xml version="1.0" encoding="UTF-8"?>\n'
            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n'
