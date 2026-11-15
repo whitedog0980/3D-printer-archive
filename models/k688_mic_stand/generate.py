@@ -81,12 +81,20 @@ CORNER = 1.5             # 육각 모서리 반지름
 FLANGE_APO = 8.6         # 헤드 육각 플랜지 맞변 반거리
 HEAD_OFF = 13.0          # C 축 -> 마이크 어깨면
 
-# 차음 원통: 마이크 헤드(Ø40)에 끼우는 얇은 원통. 벽 두께 = 0.4 노즐 2줄
+# 차음 원통 v2: 마이크 헤드(Ø40)에 끼우는 원통. 위쪽 바깥에 집음 파츠용 수나사
+# (총열 끝 나사에 소음기를 돌려 끼우는 방식)
 MIC_HEAD_D = 40.0
-SLEEVE_CLEAR = 0.4       # 지름 방향 여유 (끼워 넣는 헐거움)
-SLEEVE_WALL = 0.87       # Bambu 기본 선폭 바깥 0.42 + 안쪽 0.45
+SLEEVE_CLEAR = 0.9       # 지름 방향 여유. v1 0.4 는 너무 빡빡해서 0.5 키움 -> 안지름 40.9
+WALL5 = 0.42 + 4 * 0.45  # 0.4 노즐 벽 5줄 (바깥 0.42 + 안쪽 0.45 x4) = 2.22
 SLEEVE_H = 70.0          # 길이
-SLEEVE_LEAD = 0.3        # 끼우는 쪽 안쪽 모따기
+SLEEVE_LEAD = 0.5        # 마이크를 넣는 쪽(아래) 안쪽 모따기
+# 집음 파츠 나사: 자체 규격. 피치 3, 산 높이 1.0, 플랭크 45도(서포트 없이 세워 출력)
+ST_PITCH, ST_CREST, ST_DEPTH = 3.0, 0.5, 1.0
+ST_LEN = 11.5            # 원통 수나사 길이
+ST_TOP_GAP = 1.5         # 원통 끝과 수나사 사이 민무늬 구간
+ST_CLEAR = 0.35          # 암나사 반경 공차
+FUNNEL_THREAD_LEN = 13.0 # 집음 파츠 암나사 구간 길이
+
 
 # 손잡이: 끝이 둥근 1자, 너트 포켓이 관절 쪽을 향함
 KNOB_LEN, KNOB_W = 18.0, 9.0
@@ -496,13 +504,63 @@ def make_knob():
                          slab(KNOB_CAP, total, [outer], [pocket], ct=EDGE)))
 
 
+def sleeve_radii():
+    ri = (MIC_HEAD_D + SLEEVE_CLEAR) / 2      # 20.45
+    ro = ri + WALL5                            # 22.67 = 수나사 골
+    return ri, ro, ro + ST_DEPTH               # 수나사 산 23.67
+
+
+def st_male(theta, z):
+    _, ro, major = sleeve_radii()
+    return thread_r(theta, z, major, ST_PITCH, ST_CREST, ST_DEPTH, 45)
+
+
 def make_mic_sleeve():
-    """마이크 헤드에 끼우는 차음 원통. 양쪽이 열려 있고 위쪽(끼우는 쪽) 안쪽을 모따기."""
-    ri = (MIC_HEAD_D + SLEEVE_CLEAR) / 2
-    ro = ri + SLEEVE_WALL
+    """차음 원통 v2. 벽 5줄, 아래로 마이크를 넣고 위쪽 바깥에 수나사."""
+    ri, ro, _ = sleeve_radii()
     h = SLEEVE_H
-    return merge(revolve([(ri, 0), (ro, 0), (ro, h), (ri + SLEEVE_LEAD, h), (ri, h - SLEEVE_LEAD)],
-                         closed_loop=True))
+    z1 = h - ST_TOP_GAP
+    z0 = z1 - ST_LEN
+    rows = thread_rows(st_male, z0, z1, ST_PITCH / 24,
+                       lambda r, z: np.maximum(ro, np.minimum(r, np.minimum(ro + (z - z0), ro + (z1 - z)))))
+    pts = [(ri + SLEEVE_LEAD, 0), (ro - 0.4, 0), (ro, 0.4), *rows,
+           (ro, h - 0.4), (ro - 0.4, h), (ri + 0.3, h), (ri, h - 0.3), (ri, SLEEVE_LEAD)]
+    return merge(revolve(pts, closed_loop=True))
+
+
+def funnel_radii():
+    _, _, major = sleeve_radii()
+    f_major = major + ST_CLEAR                 # 암나사 골 24.02
+    r_end = (MIC_HEAD_D + SLEEVE_CLEAR) / 4    # 원통 안지름의 절반 지름 -> 반지름 10.225
+    return f_major, f_major + WALL5, r_end
+
+
+def make_mic_funnel():
+    """집음 파츠. 아래는 암나사 원통, 위는 안지름이 45도로 원통 안지름의 절반까지 줄어드는
+    윗부분이 잘린 원뿔. 수평 벽 두께는 5줄(2.22). 암나사가 베드에 닿게 출력."""
+    f_major, ro, r_end = funnel_radii()
+    zt = FUNNEL_THREAD_LEN
+    z_top = zt + (f_major - r_end)             # 45도
+    r_ent = f_major + 0.4
+    female = thread_rows(lambda th, z: st_male(th, z) + ST_CLEAR, zt, 0.0, ST_PITCH / 24,
+                         lambda r, z: np.maximum(r, r_ent - z))       # 입구 모따기
+    pts = [(ro - 0.4, 0), (ro, 0.4), (ro, zt), (r_end + WALL5, z_top),
+           (r_end, z_top), (f_major, zt), *female]
+    return merge(revolve(pts, closed_loop=True))
+
+
+def write_stl(path, mesh):
+    """이진 STL."""
+    v, t = mesh
+    tri = v[t].astype(np.float32)
+    nrm = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
+    rec = np.zeros(len(t), dtype=[("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
+    rec["n"], rec["v"] = nrm, tri
+    with open(path, "wb") as f:
+        f.write(b"k688 mic stand".ljust(80, b" "))
+        f.write(np.uint32(len(t)).tobytes())
+        f.write(rec.tobytes())
 
 
 def bolt_check():
@@ -550,6 +608,7 @@ def build():
         "frame": make_frame(),
         "knob": make_knob(),
         "mic_sleeve": make_mic_sleeve(),
+        "mic_funnel": make_mic_funnel(),
     }
     # 부품 사이를 넉넉히 띄워 배치
     items = [("base", 15, 110),
@@ -558,7 +617,7 @@ def build():
              ("screw_RH", 140, 145), ("screw_LH", 175, 145),
              ("knob", 30, 170), ("knob", 55, 170), ("knob", 80, 170), ("knob", 105, 170),
              # 차음 원통은 2번 플레이트 가운데에 따로 출력 (실패해도 스탠드 부품에 영향 없음)
-             ("mic_sleeve", 128, 128, 2)]
+             ("mic_sleeve", 80, 128, 2), ("mic_funnel", 176, 128, 2)]
     return objects, items
 
 
@@ -712,6 +771,10 @@ def main():
         assert past_nut >= 0, f"M3x{bolt} does not reach through the nut at {name}"
         assert past_knob <= 0, f"M3x{bolt} sticks out of the knob at {name}"
     assert PIVOT_Z - KNOB_LEN / 2 > BASE_T + 0.5, "knob hits the base plate"
+    stl = here / "stl"
+    stl.mkdir(exist_ok=True)
+    for name in ("mic_sleeve", "mic_funnel"):
+        write_stl(stl / f"{name}.stl", objects[name])
     import bambu_project
     bambu_project.write(here / "k688_mic_stand.3mf", objects, bambu_items(items),
                         "Fifine K688 mic stand v5")
