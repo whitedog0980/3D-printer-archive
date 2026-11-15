@@ -71,8 +71,8 @@ OBJECT_SETTINGS = {
     "screw_LH": FINE,
     "frame": FINE,
     "knob": {"sparse_infill_density": "100%"},
-    # 차음 원통·집음 파츠: 벽 7줄. 원통은 높이 70 이라 안팎 브림으로 붙이고 천천히 출력
-    "mic_sleeve": {"wall_loops": "7", "brim_type": "outer_and_inner", "brim_width": "6",
+    # 차음 원통: 이중벽 한 겹당 벽 3줄. 집음 파츠: 벽 7줄. 원통은 높이 70 이라 안팎 브림으로 붙이고 천천히 출력
+    "mic_sleeve": {"wall_loops": "3", "brim_type": "outer_and_inner", "brim_width": "6",
                    "brim_object_gap": "0", "outer_wall_speed": "60", "inner_wall_speed": "60"},
     "mic_funnel": {"wall_loops": "7"},
 

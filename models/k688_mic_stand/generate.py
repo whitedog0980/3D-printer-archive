@@ -84,8 +84,10 @@ HEAD_OFF = 13.0          # C 축 -> 마이크 어깨면
 # 차음 원통 v3: 마이크 헤드(Ø40)에 끼우는 원통. 위쪽은 벽을 깎아 만든 수나사
 # (총열 끝 나사에 소음기를 돌려 끼우는 방식). 집음 파츠를 끼우면 바깥면이 하나로 이어진다
 MIC_HEAD_D = 40.0
-SLEEVE_CLEAR = 0.9       # 지름 방향 여유 -> 안지름 40.9
-WALL7 = 0.42 + 6 * 0.45  # 0.4 노즐 벽 7줄 (바깥 0.42 + 안쪽 0.45 x6) = 3.12
+SLEEVE_CLEAR = 2.0       # 지름 방향 여유 -> 안지름 42.0 (40.4, 40.9 는 들어가지 않았음)
+WALL7 = 0.42 + 6 * 0.45  # 0.4 노즐 벽 7줄 = 3.12 (집음 파츠 원뿔 벽)
+WALL3 = 0.42 + 2 * 0.45  # 이중벽 한 겹 = 벽 3줄 1.32
+SLEEVE_GAP = 0.5         # 두 겹 사이 빈 공간 (1줄)
 SLEEVE_H = 70.0          # 길이 (수나사 구간 포함)
 SLEEVE_LEAD = 0.5        # 마이크를 넣는 쪽(아래) 안쪽 모따기
 # 집음 파츠 나사: 자체 규격. 피치 2.4, 산 높이 0.8, 플랭크 45도. 벽 두께 안에서 깎는다
@@ -508,9 +510,9 @@ def make_knob():
 
 def sleeve_radii():
     """(안쪽, 바깥, 수나사 골, 수나사 산) 반지름."""
-    ri = (MIC_HEAD_D + SLEEVE_CLEAR) / 2      # 20.45
-    minor = ri + ST_MALE_WALL                  # 21.52
-    return ri, ri + WALL7, minor, minor + ST_DEPTH
+    ri = (MIC_HEAD_D + SLEEVE_CLEAR) / 2      # 21.0
+    minor = ri + ST_MALE_WALL                  # 22.07
+    return ri, ri + 2 * WALL3 + SLEEVE_GAP, minor, minor + ST_DEPTH
 
 
 def st_male(theta, z):
@@ -518,8 +520,24 @@ def st_male(theta, z):
     return thread_r(theta, z, sleeve_radii()[3], ST_PITCH, ST_CREST, ST_DEPTH, 45)
 
 
+def sleeve_void(z0, z1):
+    """이중벽 사이 빈 공간 (안쪽을 향한 셸)."""
+    ri = sleeve_radii()[0]
+    a, b = ri + WALL3, ri + WALL3 + SLEEVE_GAP
+    v, t = revolve([(a, z0), (b, z0), (b, z1), (a, z1)], closed_loop=True)
+    return v, t[:, ::-1]
+
+
+def with_void(solid, void):
+    """닫힌 셸 안에 빈 공간 셸을 넣은 하나의 메시."""
+    (v1, t1), (v2, t2) = solid, void
+    assert signed_volume(v2, t2) < 0
+    return np.vstack([v1, v2]), np.vstack([t1, t2 + len(v1)])
+
+
 def make_mic_sleeve():
-    """차음 원통 v3. 벽 7줄, 아래로 마이크를 넣고 위쪽은 벽을 깎은 수나사."""
+    """차음 원통 v4. 아래로 마이크를 넣고 위쪽은 벽을 깎은 수나사.
+    몸통은 벽 3줄 + 빈 공간 1줄 + 벽 3줄의 이중벽, 나사 구간과 바닥 1 mm는 꽉 찬 벽."""
     ri, ro, minor, _ = sleeve_radii()
     h = SLEEVE_H
     zs = h - ST_ZONE                           # 턱 높이
@@ -528,7 +546,14 @@ def make_mic_sleeve():
                            r, np.minimum(minor + (z - zs), minor + (zs + ST_LEN - z)))))
     pts = [(ri + SLEEVE_LEAD, 0), (ro - 0.4, 0), (ro, 0.4), (ro, zs), *rows,
            (minor, h - 0.4), (minor - 0.4, h), (ri + 0.3, h), (ri, h - 0.3), (ri, SLEEVE_LEAD)]
-    return merge(revolve(pts, closed_loop=True))
+    return with_void(merge(revolve(pts, closed_loop=True)), sleeve_void(1.0, zs - 1.5))
+
+
+def make_sleeve_fit_ring(h=10.0):
+    """끼움 확인용 시험 링. 원통 아래쪽 10 mm와 같은 단면."""
+    ri, ro, _, _ = sleeve_radii()
+    pts = [(ri + SLEEVE_LEAD, 0), (ro - 0.4, 0), (ro, 0.4), (ro, h), (ri, h), (ri, SLEEVE_LEAD)]
+    return with_void(merge(revolve(pts, closed_loop=True)), sleeve_void(1.0, h - 1.0))
 
 
 def funnel_radii():
@@ -779,6 +804,7 @@ def main():
     stl.mkdir(exist_ok=True)
     for name in ("mic_sleeve", "mic_funnel"):
         write_stl(stl / f"{name}.stl", objects[name])
+    write_stl(stl / "mic_sleeve_fit_test.stl", make_sleeve_fit_ring())
     import bambu_project
     bambu_project.write(here / "k688_mic_stand.3mf", objects, bambu_items(items),
                         "Fifine K688 mic stand v5")
